@@ -22,4 +22,10 @@ class GeminiClient:
         return self.embed_text(text, task_type="retrieval_query")
 
     def embed_texts(self, texts: List[str], task_type: str = "retrieval_document") -> List[List[float]]:
-        return [self.embed_text(t, task_type=task_type) for t in texts]
+        """Embed multiple texts in a single API call using batch embedding."""
+        result = genai.embed_content(
+            model=self.model,
+            content=texts,
+            task_type=task_type,
+        )
+        return result["embeddings"]

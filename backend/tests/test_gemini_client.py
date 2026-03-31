@@ -34,7 +34,7 @@ def test_embed_text_calls_correct_model():
 
 
 def test_embed_texts_batch_returns_list_of_embeddings():
-    mock_result = {"embedding": [0.1] * 3072}
+    mock_result = {"embeddings": [[0.1] * 3072, [0.1] * 3072]}
     with patch("backend.core.gemini_client.genai") as mock_genai:
         mock_genai.embed_content.return_value = mock_result
         client = GeminiClient()
