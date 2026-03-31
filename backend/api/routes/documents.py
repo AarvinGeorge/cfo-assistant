@@ -1,6 +1,5 @@
 import os
 import uuid
-import shutil
 from pathlib import Path
 from typing import Optional
 
@@ -25,11 +24,20 @@ async def upload_document(
     """Upload a financial document, parse it, chunk it, embed it, and index it."""
     settings = get_settings()
 
-    # Validate file type
-    filename = file.filename or "unknown"
+    # Validate and sanitize filename (prevent path traversal)
+    raw_filename = file.filename or "unknown"
+    filename = Path(raw_filename).name  # Strip directory components
+    if not filename or filename in (".", ".."):
+        raise HTTPException(status_code=400, detail="Invalid filename")
     ext = Path(filename).suffix.lower()
     if ext not in (".pdf", ".csv", ".txt", ".html"):
         raise HTTPException(status_code=400, detail=f"Unsupported file type: {ext}")
+
+    # Check file size (50MB limit)
+    MAX_FILE_SIZE = 50 * 1024 * 1024
+    contents = await file.read()
+    if len(contents) > MAX_FILE_SIZE:
+        raise HTTPException(status_code=400, detail="File size exceeds 50MB limit")
 
     # Save uploaded file
     upload_dir = Path(settings.upload_dir)
@@ -37,7 +45,7 @@ async def upload_document(
     file_path = upload_dir / filename
 
     with open(file_path, "wb") as f:
-        shutil.copyfileobj(file.file, f)
+        f.write(contents)
 
     # Parse based on type
     doc_id = str(uuid.uuid4())
