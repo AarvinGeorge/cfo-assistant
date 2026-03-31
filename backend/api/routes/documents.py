@@ -50,12 +50,17 @@ async def upload_document(
     # Parse based on type
     doc_id = str(uuid.uuid4())
 
-    if ext == ".pdf":
-        parsed = parse_pdf(str(file_path))
-    elif ext == ".csv":
-        parsed = parse_csv(str(file_path))
-    else:
-        raise HTTPException(status_code=400, detail=f"Parser not yet implemented for {ext}")
+    try:
+        if ext == ".pdf":
+            parsed = parse_pdf(str(file_path))
+        elif ext == ".csv":
+            parsed = parse_csv(str(file_path))
+        else:
+            raise HTTPException(status_code=400, detail=f"Parser not yet implemented for {ext}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to parse document: {str(e)}")
 
     # Build metadata
     doc_metadata = {
