@@ -45,23 +45,12 @@ def test_tool_count():
 
 
 def test_remaining_stubs_raise_not_implemented():
-    """Verify non-document tool stubs still raise NotImplementedError."""
+    """Verify Phase 4/6 tool stubs still raise NotImplementedError."""
     from backend.mcp_server.tools import (
-        modeling_tools, scenario_tools,
         output_tools, memory_tools,
     )
 
     stub_calls = [
-        lambda: modeling_tools.mcp_extract_financials([]),
-        lambda: modeling_tools.mcp_run_dcf({}),
-        lambda: modeling_tools.mcp_run_ratios({}),
-        lambda: modeling_tools.mcp_run_forecast({}),
-        lambda: modeling_tools.mcp_run_variance({}, {}),
-        lambda: modeling_tools.mcp_store_model({}, "test"),
-        lambda: scenario_tools.mcp_run_scenarios({}, {}),
-        lambda: scenario_tools.mcp_sensitivity_matrix({}, "a", "b"),
-        lambda: scenario_tools.mcp_covenant_check({}, {}),
-        lambda: scenario_tools.mcp_runway_calc(1000.0, []),
         lambda: output_tools.mcp_render_excel({}, {}),
         lambda: output_tools.mcp_render_pdf({}, [], {}),
         lambda: output_tools.mcp_render_chart({}, "bar", {}),
