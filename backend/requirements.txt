@@ -1,0 +1,44 @@
+# Web framework
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+python-multipart==0.0.12
+
+# Config
+pydantic-settings==2.6.1
+python-dotenv==1.0.1
+
+# Anthropic Claude
+anthropic==0.40.0
+
+# Google Gemini Embeddings
+google-generativeai==0.8.3
+
+# Pinecone
+pinecone==5.4.2
+
+# Redis
+redis==5.2.1
+
+# MCP
+mcp==1.2.0
+
+# Document parsing (Phase 2 — installed now)
+pdfplumber==0.11.4
+pdfminer.six==20231228
+beautifulsoup4==4.12.3
+pandas==2.2.3
+
+# Financial modeling (Phase 3 — installed now)
+numpy==2.2.1
+scipy==1.15.1
+openpyxl==3.1.5
+reportlab==4.2.5
+plotly==5.24.1
+
+# Testing
+pytest==8.3.4
+pytest-asyncio==0.24.0
+httpx==0.28.1
+
+# Dev
+python-multipart==0.0.12

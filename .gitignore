@@ -1,0 +1,30 @@
+# Environment
+.env
+*.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# Data directories
+backend/data/
+backend/storage/
+
+# IDE
+.DS_Store
+.idea/
+.vscode/
+
+# Node
+node_modules/
+frontend/dist/
+
+# Logs
+*.log
+audit_log.jsonl
