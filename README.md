@@ -135,11 +135,13 @@ finsight-cfo/
 │   │   └── redis_client.py        # Redis connection + ping check
 │   ├── skills/
 │   │   ├── document_ingestion.py  # PDF/CSV parsing + hierarchical chunking
-│   │   └── vector_retrieval.py    # Semantic search + MMR reranking
+│   │   ├── vector_retrieval.py    # Semantic search + MMR reranking
+│   │   ├── financial_modeling.py  # DCF, ratios, forecast, variance analysis
+│   │   └── scenario_analysis.py   # Scenarios, sensitivity, covenants, runway
 │   ├── mcp_server/
 │   │   ├── financial_mcp_server.py # MCP server with 26 registered tools
 │   │   └── tools/                  # Tool implementations by domain
-│   ├── tests/                      # pytest suite (91 unit + 3 integration)
+│   ├── tests/                      # pytest suite (155 unit + 23 integration)
 │   ├── .env.example
 │   └── requirements.txt
 └── frontend/
@@ -166,7 +168,7 @@ conda run -n finsight pytest tests/ -v
 
 - [x] **Phase 1 — Foundation:** Project scaffold, FastAPI, config, Pinecone/Redis/Gemini clients, BaseAgent, MCP server scaffold (26 tool stubs)
 - [x] **Phase 2 — Ingestion & RAG:** PDF/CSV parsing, hierarchical chunking, Gemini embedding, Pinecone upsert/search, MMR reranking, /documents API
-- [ ] **Phase 3 — Financial Modeling:** DCF, ratio scorecard, forecasting, variance analysis, scenario planning
+- [x] **Phase 3 — Financial Modeling:** DCF, ratio scorecard, forecasting, variance analysis, scenario/sensitivity/covenants/runway
 - [ ] **Phase 4 — Agent Integration:** Wire all 6 agents through Orchestrator, Redis memory, end-to-end flow
 - [ ] **Phase 5 — Frontend:** React + MUI pages (Dashboard, Chat, Documents, Models, Scenarios, Reports)
 - [ ] **Phase 6 — Output & Polish:** Excel/PDF generation, packaging, documentation
