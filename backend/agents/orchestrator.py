@@ -1,3 +1,4 @@
+import json
 import re
 
 from langgraph.graph import StateGraph, END
@@ -25,6 +26,7 @@ from backend.skills.scenario_analysis import (
     calculate_cash_runway,
     stress_test_covenants,
 )
+from backend.mcp_server.tools.memory_tools import mcp_citation_validator
 
 
 def get_llm():
@@ -114,67 +116,139 @@ def rag_retrieve(state: AgentState) -> dict:
 
 
 def financial_model_node(state: AgentState) -> dict:
-    """Use Claude to interpret the query and run appropriate financial model."""
+    """Use Claude to extract parameters, then run the actual financial model."""
     llm = get_llm()
     query = state["current_query"]
     context = state.get("formatted_context", "")
 
-    # Ask Claude to determine model type and extract parameters
     model_prompt = SystemMessage(
         content=f"""You are a financial modeling assistant. Based on the user's query and the available financial data, determine which model to run and extract the parameters.
 
 Available models:
 1. DCF (requires: revenue, ebit, wacc, terminal_growth)
-2. Ratio Scorecard (requires: income_statement and balance_sheet data)
-3. Forecast (requires: historical_series with at least 2 years)
+2. Ratio Scorecard (requires: income_statement and balance_sheet data as nested dicts)
+3. Forecast (requires: historical_series dict with lists of values)
 4. Variance Analysis (requires: actuals and budget dicts)
 
 Available financial context:
 {context}
 
-Respond with a JSON object:
-{{"model_type": "dcf|ratios|forecast|variance", "parameters": {{...extracted parameters...}}, "explanation": "brief explanation of what you're computing"}}
+Respond with ONLY a valid JSON object (no markdown, no explanation outside JSON):
+{{"model_type": "dcf|ratios|forecast|variance", "parameters": {{...extracted parameters...}}, "explanation": "brief explanation"}}
 
-If you cannot extract sufficient parameters from the context, respond with:
+If you cannot extract sufficient parameters, respond with:
 {{"model_type": "insufficient_data", "missing": ["list of what's needed"], "explanation": "what's missing"}}"""
     )
 
     response = llm.invoke([model_prompt, HumanMessage(content=query)])
 
-    return {
-        "model_output": {"type": "financial_model", "llm_response": response.content},
-    }
+    try:
+        # Strip any markdown code fences Claude might add
+        content = response.content.strip()
+        if content.startswith("```"):
+            content = content.split("\n", 1)[1] if "\n" in content else content[3:]
+            if content.endswith("```"):
+                content = content[:-3]
+            content = content.strip()
+        parsed = json.loads(content)
+    except (json.JSONDecodeError, TypeError):
+        return {"model_output": {"type": "error", "message": "Could not parse model parameters from context", "raw": response.content}}
+
+    model_type = parsed.get("model_type", "insufficient_data")
+    params = parsed.get("parameters", {})
+    explanation = parsed.get("explanation", "")
+
+    if model_type == "insufficient_data":
+        return {"model_output": {"type": "insufficient_data", "missing": parsed.get("missing", []), "explanation": explanation}}
+
+    try:
+        if model_type == "dcf":
+            result = build_dcf_model(params)
+        elif model_type == "ratios":
+            result = build_ratio_scorecard(params)
+        elif model_type == "forecast":
+            historical = params.get("historical_series", params)
+            horizon = params.get("horizon", 3)
+            result = build_forecast_model(historical, horizon)
+        elif model_type == "variance":
+            result = build_variance_analysis(params.get("actuals", {}), params.get("budget", {}))
+        else:
+            return {"model_output": {"type": "unknown", "raw": response.content}}
+    except Exception as e:
+        return {"model_output": {"type": "error", "message": f"Model execution failed: {str(e)}", "params_attempted": params}}
+
+    return {"model_output": {"type": model_type, "result": result, "explanation": explanation}}
 
 
 # ── Node: Scenario Analysis ──────────────────────────────────────────────────
 
 
 def scenario_node(state: AgentState) -> dict:
-    """Handle scenario analysis, sensitivity, runway, and covenant queries."""
+    """Use Claude to extract parameters, then run the actual scenario analysis."""
     llm = get_llm()
     query = state["current_query"]
     context = state.get("formatted_context", "")
 
     scenario_prompt = SystemMessage(
-        content=f"""You are a scenario analysis assistant. Based on the user's query and available data, determine the analysis type.
+        content=f"""You are a scenario analysis assistant. Based on the user's query and available data, determine the analysis type and extract parameters.
 
 Available analyses:
-1. Scenario Matrix (bull/base/bear cases)
-2. Sensitivity Table (vary two inputs)
-3. Cash Runway (cash balance / burn rate)
-4. Covenant Check (test against thresholds)
+1. Scenario Matrix - needs base_inputs dict with: revenue, ebit, wacc, terminal_growth, revenue_growth, ebit_margin, projection_years
+2. Sensitivity Table - needs base_inputs dict plus var1, var2 names and ranges
+3. Cash Runway - needs cash_balance (float) and burn_scenarios (list of {{name, monthly_burn}})
+4. Covenant Check - needs model_result (with ratios) and thresholds dict
 
 Available financial context:
 {context}
 
-Respond with a JSON object describing the analysis to run and the parameters extracted from context."""
+Respond with ONLY a valid JSON object:
+{{"analysis_type": "scenario_matrix|sensitivity|runway|covenant", "parameters": {{...}}, "explanation": "brief explanation"}}
+
+If insufficient data:
+{{"analysis_type": "insufficient_data", "missing": [...], "explanation": "..."}}"""
     )
 
     response = llm.invoke([scenario_prompt, HumanMessage(content=query)])
 
-    return {
-        "model_output": {"type": "scenario_analysis", "llm_response": response.content},
-    }
+    try:
+        content = response.content.strip()
+        if content.startswith("```"):
+            content = content.split("\n", 1)[1] if "\n" in content else content[3:]
+            if content.endswith("```"):
+                content = content[:-3]
+            content = content.strip()
+        parsed = json.loads(content)
+    except (json.JSONDecodeError, TypeError):
+        return {"model_output": {"type": "error", "message": "Could not parse scenario parameters"}}
+
+    analysis_type = parsed.get("analysis_type", "insufficient_data")
+    params = parsed.get("parameters", {})
+    explanation = parsed.get("explanation", "")
+
+    if analysis_type == "insufficient_data":
+        return {"model_output": {"type": "insufficient_data", "missing": parsed.get("missing", []), "explanation": explanation}}
+
+    try:
+        if analysis_type == "scenario_matrix":
+            result = run_scenario_matrix(params.get("base_inputs", params), params.get("assumptions"))
+        elif analysis_type == "sensitivity":
+            result = build_sensitivity_table(
+                params.get("base_inputs", params),
+                params.get("var1", "wacc"),
+                params.get("var1_range", [0.08, 0.09, 0.10, 0.11, 0.12]),
+                params.get("var2", "terminal_growth"),
+                params.get("var2_range", [0.01, 0.02, 0.03, 0.04, 0.05]),
+            )
+        elif analysis_type == "runway":
+            result = calculate_cash_runway(params.get("cash_balance", 0), params.get("burn_scenarios", []))
+        elif analysis_type == "covenant":
+            result = stress_test_covenants(params.get("model_result", {}), params.get("thresholds", {}))
+        else:
+            return {"model_output": {"type": "unknown"}}
+    except Exception as e:
+        return {"model_output": {"type": "error", "message": f"Analysis failed: {str(e)}"}}
+
+    return {"model_output": {"type": analysis_type, "result": result, "explanation": explanation}}
 
 
 # ── Node: Generate Response ───────────────────────────────────────────────────
@@ -218,6 +292,11 @@ Rules:
 
     # Extract citations from response
     citations = re.findall(r"\[Source: ([^\]]+)\]", response_text)
+
+    # Validate citations
+    validation = mcp_citation_validator(response_text)
+    if not validation["valid"] and validation["uncited_claims"] > 0:
+        response_text += f"\n\n⚠️ Note: {validation['uncited_claims']} numerical claim(s) may lack source citations."
 
     return {
         "response": response_text,
