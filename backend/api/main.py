@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from backend.api.routes.health import router as health_router
 from backend.api.routes.documents import router as documents_router
 from backend.api.routes.models import router as models_router
@@ -27,6 +28,14 @@ app = FastAPI(
     title="FinSight CFO Assistant",
     version="0.1.0",
     lifespan=lifespan,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 app.include_router(health_router)
