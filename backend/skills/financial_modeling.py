@@ -149,6 +149,11 @@ def build_dcf_model(inputs: dict) -> dict:
     shares = inputs.get("shares_outstanding")
     net_debt = inputs.get("net_debt", 0)
 
+    # Compute D&A, CapEx, NWC as percentages of base revenue
+    da_pct = da / revenue if revenue else 0
+    capex_pct = capex / revenue if revenue else 0
+    nwc_pct = nwc_change / revenue if revenue else 0
+
     warnings: List[str] = []
 
     # Guardrails
@@ -177,7 +182,10 @@ def build_dcf_model(inputs: dict) -> dict:
         proj_revenue = current_revenue * (1 + revenue_growth)
         proj_ebit = proj_revenue * ebit_margin
         nopat = proj_ebit * (1 - tax_rate)
-        fcf = nopat + da - capex - nwc_change
+        proj_da = proj_revenue * da_pct
+        proj_capex = proj_revenue * capex_pct
+        proj_nwc = proj_revenue * nwc_pct
+        fcf = nopat + proj_da - proj_capex - proj_nwc
         discount_factor = (1 + wacc) ** year
         discounted_fcf = fcf / discount_factor
 
@@ -186,6 +194,9 @@ def build_dcf_model(inputs: dict) -> dict:
             "revenue": round(proj_revenue, 2),
             "ebit": round(proj_ebit, 2),
             "nopat": round(nopat, 2),
+            "da": round(proj_da, 2),
+            "capex": round(proj_capex, 2),
+            "nwc_change": round(proj_nwc, 2),
             "fcf": round(fcf, 2),
             "discount_factor": round(discount_factor, 4),
             "discounted_fcf": round(discounted_fcf, 2),
@@ -375,8 +386,9 @@ def build_ratio_scorecard(statements: dict) -> dict:
     if (bs.get("total_equity") is not None
             and bs.get("total_debt") is not None):
         invested_capital = bs["total_equity"] + bs["total_debt"]
+    tax_rate_for_roic = statements.get("tax_rate", 0.25)
     nopat = (
-        inc.get("ebit", 0) * (1 - 0.25)
+        inc.get("ebit", 0) * (1 - tax_rate_for_roic)
         if inc.get("ebit") is not None else None
     )
     roic = safe_div(nopat, invested_capital, "ROIC")
