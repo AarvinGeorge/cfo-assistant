@@ -246,11 +246,6 @@ def build_dcf_model(inputs: dict) -> dict:
 # 3. Ratio Scorecard
 # ---------------------------------------------------------------------------
 
-def _compute_single_ratio(statements: dict, category: str, name: str):
-    """Helper for prior period ratio computation -- simplified version."""
-    return None
-
-
 def build_ratio_scorecard(statements: dict) -> dict:
     """
     Compute financial ratios across four categories:
