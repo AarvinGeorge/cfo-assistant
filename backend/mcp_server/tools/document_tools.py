@@ -83,46 +83,55 @@ def mcp_list_documents() -> list:
 
 
 def register_document(doc_metadata: dict, chunk_count: int) -> None:
-    """Track an ingested document in Redis."""
+    """Track an ingested document in Redis using a pipeline for atomicity."""
     redis_client = get_redis_client()
-    docs_json = redis_client.get(DOCS_REDIS_KEY)
-    docs = json.loads(docs_json) if docs_json else []
 
-    doc_entry = {
-        **doc_metadata,
-        "chunk_count": chunk_count,
-        "status": "indexed",
-    }
+    with redis_client.pipeline() as pipe:
+        pipe.watch(DOCS_REDIS_KEY)
+        docs_json = redis_client.get(DOCS_REDIS_KEY)
+        docs = json.loads(docs_json) if docs_json else []
 
-    # Update existing or append new
-    existing_idx = next(
-        (i for i, d in enumerate(docs) if d.get("doc_id") == doc_metadata.get("doc_id")),
-        None,
-    )
-    if existing_idx is not None:
-        docs[existing_idx] = doc_entry
-    else:
-        docs.append(doc_entry)
+        doc_entry = {
+            **doc_metadata,
+            "chunk_count": chunk_count,
+            "status": "indexed",
+        }
 
-    redis_client.set(DOCS_REDIS_KEY, json.dumps(docs))
+        existing_idx = next(
+            (i for i, d in enumerate(docs) if d.get("doc_id") == doc_metadata.get("doc_id")),
+            None,
+        )
+        if existing_idx is not None:
+            docs[existing_idx] = doc_entry
+        else:
+            docs.append(doc_entry)
+
+        pipe.multi()
+        pipe.set(DOCS_REDIS_KEY, json.dumps(docs))
+        pipe.execute()
 
 
 def delete_document(doc_id: str) -> bool:
-    """Remove a document from the tracking list and its vectors from Pinecone."""
+    """Remove a document from tracking list and vectors, using pipeline for atomicity."""
     redis_client = get_redis_client()
-    docs_json = redis_client.get(DOCS_REDIS_KEY)
-    if not docs_json:
-        return False
 
-    docs = json.loads(docs_json)
-    new_docs = [d for d in docs if d.get("doc_id") != doc_id]
+    with redis_client.pipeline() as pipe:
+        pipe.watch(DOCS_REDIS_KEY)
+        docs_json = redis_client.get(DOCS_REDIS_KEY)
+        if not docs_json:
+            return False
 
-    if len(new_docs) == len(docs):
-        return False  # doc_id not found
+        docs = json.loads(docs_json)
+        new_docs = [d for d in docs if d.get("doc_id") != doc_id]
 
-    redis_client.set(DOCS_REDIS_KEY, json.dumps(new_docs))
+        if len(new_docs) == len(docs):
+            return False
 
-    # Delete vectors from Pinecone by doc_id filter
+        pipe.multi()
+        pipe.set(DOCS_REDIS_KEY, json.dumps(new_docs))
+        pipe.execute()
+
+    # Delete vectors from Pinecone (outside pipeline — separate service)
     store = get_pinecone_store()
     store.index.delete(filter={"doc_id": doc_id}, namespace=store.namespace)
 

@@ -56,14 +56,24 @@ class TestMcpPineconeSearch:
             assert results[0]["score"] == 0.95
 
 
+def _make_mock_redis_with_pipe():
+    """Helper: returns (mock_redis, mock_pipe) with pipeline context manager wired up."""
+    mock_redis = MagicMock()
+    mock_pipe = MagicMock()
+    mock_pipe.__enter__ = MagicMock(return_value=mock_pipe)
+    mock_pipe.__exit__ = MagicMock(return_value=False)
+    mock_redis.pipeline.return_value = mock_pipe
+    return mock_redis, mock_pipe
+
+
 class TestDocumentTracking:
     def test_register_and_list(self):
-        mock_redis = MagicMock()
+        mock_redis, mock_pipe = _make_mock_redis_with_pipe()
         mock_redis.get.return_value = None
         with patch("backend.mcp_server.tools.document_tools.get_redis_client", return_value=mock_redis):
             register_document({"doc_id": "abc", "doc_name": "test.pdf"}, chunk_count=10)
-            # Verify set was called with correct JSON
-            call_args = mock_redis.set.call_args
+            # Verify set was called on the pipeline with correct JSON
+            call_args = mock_pipe.set.call_args
             assert call_args[0][0] == DOCS_REDIS_KEY
             docs = json.loads(call_args[0][1])
             assert len(docs) == 1
@@ -85,19 +95,19 @@ class TestDocumentTracking:
             assert len(result) == 1
 
     def test_delete_document(self):
-        mock_redis = MagicMock()
+        mock_redis, mock_pipe = _make_mock_redis_with_pipe()
         mock_redis.get.return_value = json.dumps([{"doc_id": "abc"}, {"doc_id": "def"}])
         mock_store = MagicMock()
         with patch("backend.mcp_server.tools.document_tools.get_redis_client", return_value=mock_redis), \
              patch("backend.mcp_server.tools.document_tools.get_pinecone_store", return_value=mock_store):
             result = delete_document("abc")
             assert result is True
-            stored = json.loads(mock_redis.set.call_args[0][1])
+            stored = json.loads(mock_pipe.set.call_args[0][1])
             assert len(stored) == 1
             assert stored[0]["doc_id"] == "def"
 
     def test_delete_nonexistent(self):
-        mock_redis = MagicMock()
+        mock_redis, mock_pipe = _make_mock_redis_with_pipe()
         mock_redis.get.return_value = json.dumps([{"doc_id": "abc"}])
         with patch("backend.mcp_server.tools.document_tools.get_redis_client", return_value=mock_redis):
             result = delete_document("xyz")
