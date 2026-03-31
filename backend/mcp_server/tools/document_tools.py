@@ -1,28 +1,129 @@
-def mcp_parse_pdf(file_path: str) -> str:
+import json
+import uuid
+from typing import List, Dict, Any, Optional
+
+from backend.core.config import get_settings
+from backend.core.redis_client import get_redis_client
+from backend.core.gemini_client import GeminiClient
+from backend.core.pinecone_store import get_pinecone_store
+from backend.skills.document_ingestion import parse_pdf, parse_csv, hierarchical_chunk, Chunk
+from backend.skills.vector_retrieval import embed_and_upsert, semantic_search, RetrievedChunk
+
+
+DOCS_REDIS_KEY = "finsight:documents"
+
+
+def mcp_parse_pdf(file_path: str) -> dict:
     """Extract text and tables from a PDF file."""
-    raise NotImplementedError("Implemented in Phase 2")
+    return parse_pdf(file_path)
 
 
-def mcp_parse_csv(file_path: str) -> str:
+def mcp_parse_csv(file_path: str) -> dict:
     """Parse and normalize CSV financial data into structured rows."""
-    raise NotImplementedError("Implemented in Phase 2")
+    return parse_csv(file_path)
 
 
-def mcp_embed_chunks(chunks: list) -> list:
-    """Embed text chunks via Gemini Embeddings and return vectors."""
-    raise NotImplementedError("Implemented in Phase 2")
+def mcp_embed_chunks(chunks: list) -> dict:
+    """Embed text chunks via Gemini Embeddings and upsert to Pinecone."""
+    # chunks can be list of Chunk objects or list of dicts
+    if chunks and isinstance(chunks[0], dict):
+        chunks = [
+            Chunk(
+                chunk_id=c.get("chunk_id", str(uuid.uuid4())),
+                text=c["text"],
+                token_count=c.get("token_count", 0),
+                metadata=c.get("metadata", {}),
+            )
+            for c in chunks
+        ]
+    result = embed_and_upsert(chunks)
+    return result
 
 
 def mcp_pinecone_upsert(vectors: list, metadata: list) -> dict:
-    """Store embedding vectors with metadata in Pinecone index."""
-    raise NotImplementedError("Implemented in Phase 2")
+    """Store pre-computed embedding vectors with metadata in Pinecone index."""
+    store = get_pinecone_store()
+    records = []
+    for i, (vec, meta) in enumerate(zip(vectors, metadata)):
+        records.append({
+            "id": meta.get("chunk_id", str(uuid.uuid4())),
+            "values": vec,
+            "metadata": meta,
+        })
+
+    batch_size = 100
+    for i in range(0, len(records), batch_size):
+        batch = records[i:i + batch_size]
+        store.index.upsert(vectors=batch, namespace=store.namespace)
+
+    return {"upserted_count": len(records)}
 
 
-def mcp_pinecone_search(query_vector: list, top_k: int = 5) -> list:
+def mcp_pinecone_search(query: str, top_k: int = 5, filter_dict: dict = None) -> list:
     """Semantic similarity search on Pinecone index."""
-    raise NotImplementedError("Implemented in Phase 2")
+    results = semantic_search(query=query, top_k=top_k, filter_dict=filter_dict)
+    return [
+        {
+            "chunk_id": r.chunk_id,
+            "text": r.text,
+            "score": r.score,
+            "metadata": r.metadata,
+        }
+        for r in results
+    ]
 
 
 def mcp_list_documents() -> list:
     """List all ingested documents with metadata."""
-    raise NotImplementedError("Implemented in Phase 2")
+    redis_client = get_redis_client()
+    docs_json = redis_client.get(DOCS_REDIS_KEY)
+    if not docs_json:
+        return []
+    return json.loads(docs_json)
+
+
+def register_document(doc_metadata: dict, chunk_count: int) -> None:
+    """Track an ingested document in Redis."""
+    redis_client = get_redis_client()
+    docs_json = redis_client.get(DOCS_REDIS_KEY)
+    docs = json.loads(docs_json) if docs_json else []
+
+    doc_entry = {
+        **doc_metadata,
+        "chunk_count": chunk_count,
+        "status": "indexed",
+    }
+
+    # Update existing or append new
+    existing_idx = next(
+        (i for i, d in enumerate(docs) if d.get("doc_id") == doc_metadata.get("doc_id")),
+        None,
+    )
+    if existing_idx is not None:
+        docs[existing_idx] = doc_entry
+    else:
+        docs.append(doc_entry)
+
+    redis_client.set(DOCS_REDIS_KEY, json.dumps(docs))
+
+
+def delete_document(doc_id: str) -> bool:
+    """Remove a document from the tracking list and its vectors from Pinecone."""
+    redis_client = get_redis_client()
+    docs_json = redis_client.get(DOCS_REDIS_KEY)
+    if not docs_json:
+        return False
+
+    docs = json.loads(docs_json)
+    new_docs = [d for d in docs if d.get("doc_id") != doc_id]
+
+    if len(new_docs) == len(docs):
+        return False  # doc_id not found
+
+    redis_client.set(DOCS_REDIS_KEY, json.dumps(new_docs))
+
+    # Delete vectors from Pinecone by doc_id filter
+    store = get_pinecone_store()
+    store.index.delete(filter={"doc_id": doc_id}, namespace=store.namespace)
+
+    return True

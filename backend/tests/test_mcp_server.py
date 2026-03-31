@@ -44,20 +44,14 @@ def test_tool_count():
     assert len(registered) == 26
 
 
-def test_all_stubs_raise_not_implemented():
-    """Verify each tool stub raises NotImplementedError when called."""
+def test_remaining_stubs_raise_not_implemented():
+    """Verify non-document tool stubs still raise NotImplementedError."""
     from backend.mcp_server.tools import (
-        document_tools, modeling_tools, scenario_tools,
+        modeling_tools, scenario_tools,
         output_tools, memory_tools,
     )
 
     stub_calls = [
-        lambda: document_tools.mcp_parse_pdf("test.pdf"),
-        lambda: document_tools.mcp_parse_csv("test.csv"),
-        lambda: document_tools.mcp_embed_chunks([]),
-        lambda: document_tools.mcp_pinecone_upsert([], []),
-        lambda: document_tools.mcp_pinecone_search([]),
-        lambda: document_tools.mcp_list_documents(),
         lambda: modeling_tools.mcp_extract_financials([]),
         lambda: modeling_tools.mcp_run_dcf({}),
         lambda: modeling_tools.mcp_run_ratios({}),
