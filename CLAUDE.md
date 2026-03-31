@@ -74,7 +74,7 @@ FastAPI Backend Server
 | **Phase 3 — Financial Modeling** | DONE | DCF, ratio scorecard, forecasting, variance analysis, scenario/sensitivity/covenants/runway |
 | **Phase 4 — Agent Integration** | DONE | LangGraph orchestrator, intent routing, 5 agent nodes, Redis checkpointing, SSE streaming, audit logging |
 | **Code Review Fixes** | DONE | 4 critical + 7 important issues fixed (security, financial correctness, orchestrator wiring, async) |
-| **Phase 5 — Frontend** | IN PROGRESS | React + MUI MVP: Dashboard, Chat, Documents pages |
+| **Phase 5 — Frontend** | DONE | React + MUI MVP: Dashboard (KPI cards), Chat (SSE streaming + citations), Documents (DataGrid + upload) |
 | **Phase 6 — Output & Polish** | NOT STARTED | Excel/PDF generation, packaging, final polish |
 
 ---
