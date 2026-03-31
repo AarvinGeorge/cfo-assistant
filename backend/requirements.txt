@@ -23,6 +23,12 @@ redis==5.2.1
 # MCP
 mcp==1.2.0
 
+# LangGraph (agent orchestration)
+langgraph>=1.1.4
+langgraph-checkpoint-redis>=0.4.0
+langchain-anthropic>=1.4.0
+langchain-core>=1.2.23
+
 # Document parsing (Phase 2 — installed now)
 pdfplumber==0.11.4
 pdfminer.six==20231228

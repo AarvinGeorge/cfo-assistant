@@ -40,7 +40,7 @@ A RAG-powered multi-agent financial intelligence web application designed for Ch
 | Layer | Choice |
 |-------|--------|
 | Backend | Python 3.11+, FastAPI |
-| Agents | Custom Python classes (no LangChain/LlamaIndex) |
+| Agent Orchestration | LangGraph (StateGraph with conditional routing) |
 | Tool Protocol | MCP (Model Context Protocol) via `mcp` SDK |
 | LLM | Anthropic Claude (claude-sonnet-4-6) |
 | Embeddings | Google Gemini (`gemini-embedding-001`, 3072 dimensions) |
@@ -127,12 +127,19 @@ finsight-cfo/
 │   │   ├── main.py                # FastAPI app with startup validation
 │   │   └── routes/
 │   │       ├── health.py          # /health endpoint
-│   │       └── documents.py       # /documents upload, list, delete
+│   │       ├── documents.py       # /documents upload, list, delete
+│   │       ├── chat.py            # /chat and /chat/stream (SSE)
+│   │       ├── models.py          # /models DCF, ratios, forecast, variance
+│   │       └── scenarios.py       # /scenarios run, sensitivity, covenants, runway
 │   ├── core/
 │   │   ├── config.py              # pydantic-settings, typed env access
 │   │   ├── gemini_client.py       # Gemini embedding wrapper
 │   │   ├── pinecone_store.py      # Pinecone client with dimension validation
 │   │   └── redis_client.py        # Redis connection + ping check
+│   ├── agents/
+│   │   ├── base_agent.py          # Abstract base class
+│   │   ├── graph_state.py         # LangGraph typed state schema
+│   │   └── orchestrator.py        # StateGraph with intent routing + agent nodes
 │   ├── skills/
 │   │   ├── document_ingestion.py  # PDF/CSV parsing + hierarchical chunking
 │   │   ├── vector_retrieval.py    # Semantic search + MMR reranking
@@ -141,7 +148,7 @@ finsight-cfo/
 │   ├── mcp_server/
 │   │   ├── financial_mcp_server.py # MCP server with 26 registered tools
 │   │   └── tools/                  # Tool implementations by domain
-│   ├── tests/                      # pytest suite (155 unit + 23 integration)
+│   ├── tests/                      # pytest suite (193 unit + 23 integration)
 │   ├── .env.example
 │   └── requirements.txt
 └── frontend/
@@ -169,7 +176,7 @@ conda run -n finsight pytest tests/ -v
 - [x] **Phase 1 — Foundation:** Project scaffold, FastAPI, config, Pinecone/Redis/Gemini clients, BaseAgent, MCP server scaffold (26 tool stubs)
 - [x] **Phase 2 — Ingestion & RAG:** PDF/CSV parsing, hierarchical chunking, Gemini embedding, Pinecone upsert/search, MMR reranking, /documents API
 - [x] **Phase 3 — Financial Modeling:** DCF, ratio scorecard, forecasting, variance analysis, scenario/sensitivity/covenants/runway
-- [ ] **Phase 4 — Agent Integration:** Wire all 6 agents through Orchestrator, Redis memory, end-to-end flow
+- [x] **Phase 4 — Agent Integration:** LangGraph orchestrator with intent routing, 5 agent nodes, Redis checkpointing, SSE streaming chat, audit logging
 - [ ] **Phase 5 — Frontend:** React + MUI pages (Dashboard, Chat, Documents, Models, Scenarios, Reports)
 - [ ] **Phase 6 — Output & Polish:** Excel/PDF generation, packaging, documentation
 
