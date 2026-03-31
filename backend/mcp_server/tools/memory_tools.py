@@ -1,28 +1,133 @@
+import json
+import re
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import List
+
+from backend.core.redis_client import get_redis_client
+from backend.core.config import get_settings
+
+AUDIT_LOG_FILE = "audit_log.jsonl"
+
+
 def mcp_memory_read(session_id: str) -> list:
     """Read session conversation history from Redis."""
-    raise NotImplementedError("Implemented in Phase 4")
+    client = get_redis_client()
+    key = f"finsight:session:{session_id}:messages"
+    messages_json = client.lrange(key, 0, -1)
+    return [json.loads(m) for m in messages_json]
 
 
 def mcp_memory_write(session_id: str, message: dict) -> bool:
     """Write new conversation turn to Redis session store."""
-    raise NotImplementedError("Implemented in Phase 4")
+    client = get_redis_client()
+    key = f"finsight:session:{session_id}:messages"
+    client.rpush(key, json.dumps(message))
+    # Set TTL of 24 hours for session data
+    client.expire(key, 86400)
+    return True
 
 
 def mcp_intent_log(session_id: str, intent: str, query: str) -> bool:
     """Log classified intent to audit trail."""
-    raise NotImplementedError("Implemented in Phase 4")
+    entry = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "type": "intent_classification",
+        "session_id": session_id,
+        "intent": intent,
+        "query": query,
+    }
+    _append_audit_log(entry)
+    return True
 
 
 def mcp_citation_validator(response_text: str) -> dict:
-    """Validate that every factual claim has a properly formatted source citation."""
-    raise NotImplementedError("Implemented in Phase 4")
+    """
+    Validate that every numerical claim in a response has a source citation.
+
+    Looks for numbers (currency, percentages, plain numbers) and checks if
+    they're followed by a [Source: ...] citation within the same paragraph.
+
+    Returns:
+        {
+            "valid": bool,
+            "total_claims": int,
+            "cited_claims": int,
+            "uncited_claims": int,
+            "uncited_numbers": [list of uncited numerical claims],
+            "citations_found": [list of citation strings],
+        }
+    """
+    # Find all citations
+    citations = re.findall(r'\[Source: ([^\]]+)\]', response_text)
+
+    # Find numerical claims (currency, percentages, large numbers)
+    number_pattern = r'(?:\$[\d,]+(?:\.\d+)?|[\d,]+(?:\.\d+)?%|(?<!\[)(?<!\w)[\d,]{4,}(?:\.\d+)?(?!\w)(?!\]))'
+    numbers_found = re.findall(number_pattern, response_text)
+
+    # Check which numbers appear near a citation (within same paragraph)
+    paragraphs = response_text.split('\n\n')
+    uncited = []
+    cited_count = 0
+
+    for para in paragraphs:
+        para_numbers = re.findall(number_pattern, para)
+        para_citations = re.findall(r'\[Source:', para)
+
+        if para_numbers and not para_citations:
+            uncited.extend(para_numbers)
+        elif para_numbers:
+            cited_count += len(para_numbers)
+
+    total_claims = len(numbers_found)
+    uncited_count = len(uncited)
+
+    return {
+        "valid": uncited_count == 0 or total_claims == 0,
+        "total_claims": total_claims,
+        "cited_claims": cited_count,
+        "uncited_claims": uncited_count,
+        "uncited_numbers": uncited[:10],  # cap at 10
+        "citations_found": citations,
+    }
 
 
 def mcp_response_logger(session_id: str, query: str, response: str, citations: list) -> bool:
-    """Log Q&A pair with citations to local audit file."""
-    raise NotImplementedError("Implemented in Phase 4")
+    """Log Q&A pair with citations to local audit file for CFO compliance."""
+    entry = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "type": "qa_response",
+        "session_id": session_id,
+        "query": query,
+        "response_length": len(response),
+        "response_preview": response[:500],
+        "citations": citations,
+        "citation_count": len(citations),
+    }
+    _append_audit_log(entry)
+    return True
 
 
 def mcp_export_trigger(session_id: str, export_type: str, model_name: str) -> bool:
     """Signal the Output Generation Agent when an export is requested."""
-    raise NotImplementedError("Implemented in Phase 4")
+    entry = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "type": "export_request",
+        "session_id": session_id,
+        "export_type": export_type,
+        "model_name": model_name,
+    }
+    _append_audit_log(entry)
+    # In Phase 6, this will trigger the actual output generation
+    return True
+
+
+def _append_audit_log(entry: dict) -> None:
+    """Append a JSON entry to the audit log file."""
+    settings = get_settings()
+    log_dir = Path(settings.output_dir)
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_path = log_dir / AUDIT_LOG_FILE
+
+    with open(log_path, "a") as f:
+        f.write(json.dumps(entry) + "\n")

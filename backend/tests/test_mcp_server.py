@@ -45,22 +45,14 @@ def test_tool_count():
 
 
 def test_remaining_stubs_raise_not_implemented():
-    """Verify Phase 4/6 tool stubs still raise NotImplementedError."""
-    from backend.mcp_server.tools import (
-        output_tools, memory_tools,
-    )
+    """Verify Phase 6 output_tools stubs still raise NotImplementedError."""
+    from backend.mcp_server.tools import output_tools
 
     stub_calls = [
         lambda: output_tools.mcp_render_excel({}, {}),
         lambda: output_tools.mcp_render_pdf({}, [], {}),
         lambda: output_tools.mcp_render_chart({}, "bar", {}),
         lambda: output_tools.mcp_file_serve("test.xlsx"),
-        lambda: memory_tools.mcp_memory_read("sess1"),
-        lambda: memory_tools.mcp_memory_write("sess1", {}),
-        lambda: memory_tools.mcp_intent_log("sess1", "query", "text"),
-        lambda: memory_tools.mcp_citation_validator("text"),
-        lambda: memory_tools.mcp_response_logger("sess1", "q", "r", []),
-        lambda: memory_tools.mcp_export_trigger("sess1", "pdf", "model1"),
     ]
 
     for call in stub_calls:
