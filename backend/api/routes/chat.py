@@ -1,4 +1,6 @@
+import asyncio
 import json
+import logging
 import uuid
 from typing import Optional
 
@@ -11,6 +13,8 @@ from backend.agents.orchestrator import build_graph, get_checkpointer
 from backend.mcp_server.tools.memory_tools import (
     mcp_memory_write, mcp_intent_log, mcp_response_logger,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -46,8 +50,9 @@ async def chat(request: ChatRequest):
 
     config = {"configurable": {"thread_id": session_id}}
 
-    # Invoke the graph
-    result = graph.invoke(
+    # Invoke the graph (run sync call in thread to avoid blocking the event loop)
+    result = await asyncio.to_thread(
+        graph.invoke,
         {
             "messages": [HumanMessage(content=request.message)],
             "current_query": request.message,
@@ -59,7 +64,7 @@ async def chat(request: ChatRequest):
             "response": "",
             "citations": [],
         },
-        config=config,
+        config,
     )
 
     response_text = result.get("response", "I could not generate a response.")
@@ -161,7 +166,8 @@ async def chat_stream(request: ChatRequest):
                 pass
 
         except Exception as e:
-            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+            logger.exception("Error in chat stream")
+            yield f"data: {json.dumps({'type': 'error', 'message': 'An internal error occurred. Please try again.'})}\n\n"
 
     return StreamingResponse(
         event_generator(),
