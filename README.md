@@ -126,16 +126,20 @@ finsight-cfo/
 │   ├── api/
 │   │   ├── main.py                # FastAPI app with startup validation
 │   │   └── routes/
-│   │       └── health.py          # /health endpoint
+│   │       ├── health.py          # /health endpoint
+│   │       └── documents.py       # /documents upload, list, delete
 │   ├── core/
 │   │   ├── config.py              # pydantic-settings, typed env access
 │   │   ├── gemini_client.py       # Gemini embedding wrapper
 │   │   ├── pinecone_store.py      # Pinecone client with dimension validation
 │   │   └── redis_client.py        # Redis connection + ping check
+│   ├── skills/
+│   │   ├── document_ingestion.py  # PDF/CSV parsing + hierarchical chunking
+│   │   └── vector_retrieval.py    # Semantic search + MMR reranking
 │   ├── mcp_server/
 │   │   ├── financial_mcp_server.py # MCP server with 26 registered tools
-│   │   └── tools/                  # Tool stubs by domain
-│   ├── tests/                      # pytest suite (34 unit + 3 integration)
+│   │   └── tools/                  # Tool implementations by domain
+│   ├── tests/                      # pytest suite (91 unit + 3 integration)
 │   ├── .env.example
 │   └── requirements.txt
 └── frontend/
@@ -161,7 +165,7 @@ conda run -n finsight pytest tests/ -v
 ## Development Phases
 
 - [x] **Phase 1 — Foundation:** Project scaffold, FastAPI, config, Pinecone/Redis/Gemini clients, BaseAgent, MCP server scaffold (26 tool stubs)
-- [ ] **Phase 2 — Ingestion & RAG:** Document parsing, chunking, embedding, semantic retrieval
+- [x] **Phase 2 — Ingestion & RAG:** PDF/CSV parsing, hierarchical chunking, Gemini embedding, Pinecone upsert/search, MMR reranking, /documents API
 - [ ] **Phase 3 — Financial Modeling:** DCF, ratio scorecard, forecasting, variance analysis, scenario planning
 - [ ] **Phase 4 — Agent Integration:** Wire all 6 agents through Orchestrator, Redis memory, end-to-end flow
 - [ ] **Phase 5 — Frontend:** React + MUI pages (Dashboard, Chat, Documents, Models, Scenarios, Reports)
