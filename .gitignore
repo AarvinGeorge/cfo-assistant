@@ -15,6 +15,11 @@ build/
 # Data directories
 backend/data/
 backend/storage/
+data/
+
+# Local tooling / notes
+.superpowers/
+cfo-assistant-project/
 
 # IDE
 .DS_Store

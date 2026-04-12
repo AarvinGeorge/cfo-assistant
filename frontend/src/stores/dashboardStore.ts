@@ -48,6 +48,8 @@ function parseKPIResponse(text: string, format: string): KPIValue | null {
     value = `${rawValue.toFixed(0)} months`
   }
 
+  // TODO: populate `change` and `favorable` by comparing to a prior-period query
+  // Currently these are never set, so TrendingUp/Down indicators in RightPanel are dead code.
   return { value, rawValue }
 }
 

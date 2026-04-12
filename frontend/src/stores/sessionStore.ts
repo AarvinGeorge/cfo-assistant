@@ -4,10 +4,12 @@ import { persist } from 'zustand/middleware'
 interface SessionState {
   themeMode: 'dark' | 'light'
   sessionId: string
-  sidebarCollapsed: boolean
+  leftPanelOpen: boolean
+  rightPanelOpen: boolean
   toggleTheme: () => void
   setSessionId: (id: string) => void
-  toggleSidebar: () => void
+  toggleLeftPanel: () => void
+  toggleRightPanel: () => void
 }
 
 export const useSessionStore = create<SessionState>()(
@@ -15,11 +17,13 @@ export const useSessionStore = create<SessionState>()(
     (set) => ({
       themeMode: 'dark',
       sessionId: crypto.randomUUID(),
-      sidebarCollapsed: false,
+      leftPanelOpen: true,
+      rightPanelOpen: true,
       toggleTheme: () =>
         set((s) => ({ themeMode: s.themeMode === 'dark' ? 'light' : 'dark' })),
       setSessionId: (id: string) => set({ sessionId: id }),
-      toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
+      toggleLeftPanel: () => set((s) => ({ leftPanelOpen: !s.leftPanelOpen })),
+      toggleRightPanel: () => set((s) => ({ rightPanelOpen: !s.rightPanelOpen })),
     }),
     { name: 'finsight-session' }
   )
