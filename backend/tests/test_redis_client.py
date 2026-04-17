@@ -1,3 +1,19 @@
+"""
+test_redis_client.py
+
+Tests that verify the Redis client factory and connectivity helper behave correctly.
+
+Role in project:
+    Test suite — verifies the behaviour of backend.core.redis_client. Run with:
+    pytest tests/test_redis_client.py -v
+
+Coverage:
+    - get_redis_client returns a redis.Redis instance configured for localhost:6379, db 0
+    - ping_redis returns True when the underlying client.ping() succeeds
+    - ping_redis returns False when a redis.ConnectionError is raised
+    - An integration test (marked @pytest.mark.integration) verifies a live ping against a running Redis container
+"""
+
 import pytest
 import redis as redis_lib
 from unittest.mock import patch, MagicMock

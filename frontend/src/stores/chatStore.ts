@@ -1,3 +1,22 @@
+/**
+ * chatStore.ts
+ *
+ * Zustand store managing all chat state — message history, streaming
+ * status, and the SSE connection lifecycle.
+ *
+ * Role in project:
+ *   Chat feature state. Owned by CenterPanel (renders messages, input) and
+ *   read by RightPanel (Quick Action buttons call sendMessage()). Uses
+ *   native fetch (not Axios) to consume the SSE stream from POST /chat/stream,
+ *   dispatching partial tokens into the in-progress assistant message as they
+ *   arrive.
+ *
+ * Main parts:
+ *   - ChatState: messages array, isStreaming flag, currentIntent string.
+ *   - sendMessage(): opens an SSE connection, processes event types (intent,
+ *     retrieval, response, done), and appends/updates the assistant message.
+ *   - clearChat(): resets messages and generates a new sessionId.
+ */
 import { create } from 'zustand'
 import { ChatMessage } from '../types'
 import { useSessionStore } from './sessionStore'

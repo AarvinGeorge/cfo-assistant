@@ -1,3 +1,19 @@
+"""
+test_chat_api.py
+
+Tests that exercise the /chat and /chat/stream FastAPI endpoints end-to-end.
+
+Role in project:
+    Test suite — verifies the behaviour of backend.api.routes.chat. Run with:
+    pytest tests/test_chat_api.py -v
+
+Coverage:
+    - /chat/ returns HTTP 200 and the expected response shape (session_id, response, intent, citations)
+    - Auto-generated session IDs are non-empty; caller-supplied session IDs are echoed back unchanged
+    - /chat/stream returns a text/event-stream content type with at least "session" and "done" SSE events
+    - Graph invocation and all MCP side-effect helpers (memory_write, intent_log, response_logger) are mocked
+"""
+
 import json
 import pytest
 from unittest.mock import patch, MagicMock, AsyncMock

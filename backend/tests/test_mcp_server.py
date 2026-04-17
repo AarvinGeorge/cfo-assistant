@@ -1,3 +1,18 @@
+"""
+test_mcp_server.py
+
+Tests that verify all 26 MCP tools are registered on the FinSight MCP server instance.
+
+Role in project:
+    Test suite — verifies the behaviour of backend.mcp_server.financial_mcp_server. Run with:
+    pytest tests/test_mcp_server.py -v
+
+Coverage:
+    - The set of registered tool names exactly matches the expected 26-tool manifest
+    - The total registered tool count is 26
+    - Phase 6 output tool stubs (mcp_render_excel, mcp_render_pdf, mcp_render_chart, mcp_file_serve) raise NotImplementedError
+"""
+
 import pytest
 from backend.mcp_server.financial_mcp_server import mcp
 

@@ -1,3 +1,26 @@
+"""
+vector_retrieval.py
+
+Embeds text via Gemini and manages all read/write operations against the
+Pinecone vector index.
+
+Role in project:
+    Skills layer — the semantic search engine. Called in two directions:
+    by the document ingest pipeline (embed_and_upsert) to index new chunks,
+    and by the LangGraph rag_retrieve node (semantic_search + mmr_rerank)
+    to answer queries. Owns the Gemini to Pinecone data flow.
+
+Main parts:
+    - embed_and_upsert(): takes a list of Chunk objects, batches them
+      through Gemini embed_texts(), and upserts to Pinecone in groups of 100.
+    - semantic_search(): embeds a query string and runs a cosine similarity
+      search against Pinecone, returning the top-k chunk metadata dicts.
+    - mmr_rerank(): applies Maximal Marginal Relevance (lambda=0.5) to
+      re-order results for diversity, reducing redundant chunks in context.
+    - delete_document_vectors(): removes all Pinecone vectors associated
+      with a given doc_id using metadata filter deletion.
+"""
+
 import numpy as np
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, field

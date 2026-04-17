@@ -1,5 +1,19 @@
 """
-Tests for backend.skills.scenario_analysis
+test_scenario_analysis.py
+
+Tests that verify all scenario analysis functions — scenario generation, sensitivity tables, break-even, runway, and covenants.
+
+Role in project:
+    Test suite — verifies the behaviour of backend.skills.scenario_analysis. Run with:
+    pytest tests/test_scenario_analysis.py -v
+
+Coverage:
+    - define_scenarios produces bull/base/bear dicts with correct ordering of growth rates and WACC values; custom assumptions override defaults
+    - run_scenario_matrix runs DCF for all three scenarios and confirms bull EV > base EV > bear EV
+    - build_sensitivity_table produces a correctly dimensioned 2-D table and includes a base_value and output_metric label
+    - calculate_break_even converges to a break-even WACC that is higher than the base WACC
+    - calculate_cash_runway computes runway months correctly, flags critical status below 6 months, and handles zero/negative burn
+    - stress_test_covenants reports all-pass and breach cases correctly; returns "unknown" status when ratio data is absent
 """
 
 import math

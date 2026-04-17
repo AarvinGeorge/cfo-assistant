@@ -1,3 +1,20 @@
+"""
+health.py
+
+FastAPI router exposing a single GET /health endpoint that probes all
+external dependencies and reports their status.
+
+Role in project:
+    Operational layer. Called by the Makefile make status command and
+    by the FastAPI lifespan on startup. Returns a JSON object with
+    individual pass/fail for Redis ping, Pinecone index reachability,
+    and presence of required API keys.
+
+Main parts:
+    - GET /health: async handler that runs Redis ping, Pinecone describe_index,
+      and env-var presence checks concurrently, returning a HealthResponse
+      with per-service status and an overall healthy boolean.
+"""
 from fastapi import APIRouter
 from backend.core.redis_client import ping_redis
 from backend.core.pinecone_store import get_pinecone_store

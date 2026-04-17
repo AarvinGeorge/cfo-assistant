@@ -1,3 +1,21 @@
+"""
+graph_state.py
+
+TypedDict definition for AgentState — the shared state object that flows
+through every node in the LangGraph StateGraph.
+
+Role in project:
+    Agent layer — data contract. Every node in orchestrator.py reads from
+    and writes to an AgentState instance. LangGraph uses this TypedDict to
+    manage state transitions and checkpointing in Redis.
+
+Main parts:
+    - AgentState: TypedDict with fields for the conversation thread
+      (session_id, messages), routing (intent, requires_retrieval),
+      retrieval results (retrieved_chunks, context_string), model outputs
+      (model_result, scenario_result), and the final response (response,
+      citations, stream_tokens).
+"""
 from typing import TypedDict, Annotated, Any, Optional
 from langgraph.graph import add_messages
 

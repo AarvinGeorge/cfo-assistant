@@ -1,3 +1,22 @@
+"""
+scenario_tools.py
+
+MCP tool implementations wrapping the four scenario analysis capabilities.
+
+Role in project:
+    MCP layer — delegates to scenario_analysis.py. Allows Claude to
+    trigger scenario and stress-test computations as structured tool
+    calls during response generation.
+
+Main parts:
+    - mcp_run_scenarios(): calls run_scenario_matrix() for bull/base/bear.
+    - mcp_run_sensitivity(): calls build_sensitivity_table().
+    - mcp_stress_covenants(): calls stress_test_covenants().
+    - mcp_calculate_runway(): calls calculate_cash_runway().
+    - mcp_scenario_summary(): formats scenario results into a markdown
+      summary table suitable for direct inclusion in a CFO response.
+"""
+
 from backend.skills.scenario_analysis import (
     run_scenario_matrix,
     build_sensitivity_table,

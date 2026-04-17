@@ -1,3 +1,22 @@
+/**
+ * muiTheme.ts
+ *
+ * MUI v6 theme definitions for FinSight — dark and light variants with
+ * a shared design token set.
+ *
+ * Role in project:
+ *   Visual foundation. Consumed by main.tsx ThemeProvider. All colours,
+ *   typography, spacing, and component overrides are defined here so the
+ *   rest of the application uses semantic tokens (primary.main, action.selected)
+ *   rather than hardcoded hex values.
+ *
+ * Main parts:
+ *   - designTokens: raw colour values for dark and light modes (bg, surface,
+ *     elevated, accent, favorable, unfavorable).
+ *   - darkTheme: MUI theme with dark palette wired to designTokens, including
+ *     action.selected set to elevated (#3A3A3C) for active state consistency.
+ *   - lightTheme: MUI theme with light palette counterpart.
+ */
 import { createTheme } from '@mui/material/styles'
 
 // Design tokens matching the Figma design (NotebookLM-inspired neutral dark)

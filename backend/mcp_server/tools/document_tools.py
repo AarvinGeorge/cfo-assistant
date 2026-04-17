@@ -1,3 +1,22 @@
+"""
+document_tools.py
+
+MCP tool implementations for document search and retrieval operations.
+
+Role in project:
+    MCP layer — thin wrappers around vector_retrieval.py that expose
+    document search capabilities as callable MCP tools. Claude invokes
+    these during response generation to fetch cited source material.
+
+Main parts:
+    - mcp_search_documents(): semantic search across all indexed chunks.
+    - mcp_get_document_list(): returns metadata for all ingested documents.
+    - mcp_get_document_chunk(): fetches a specific chunk by ID.
+    - mcp_citation_validator(): verifies that a [Source: ...] citation
+      exists in the indexed documents before including it in a response.
+    - mcp_get_fiscal_years(): returns all fiscal years present in the index.
+"""
+
 import json
 import uuid
 from typing import List, Dict, Any, Optional

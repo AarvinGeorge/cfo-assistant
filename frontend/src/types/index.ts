@@ -1,3 +1,21 @@
+/**
+ * types/index.ts
+ *
+ * Shared TypeScript interfaces and enums used across the entire frontend.
+ *
+ * Role in project:
+ *   Type contract layer. All API response shapes, store state shapes, and
+ *   component prop types are defined here so the compiler catches mismatches
+ *   between the backend API surface and frontend usage.
+ *
+ * Main parts:
+ *   - Document: shape of a document record returned by GET /documents/.
+ *   - ChatMessage: a single message in the conversation (role, content, citations).
+ *   - Citation: a parsed [Source: ...] reference with doc name and section.
+ *   - KPIValue: a single KPI card value (label, value, format, change, favorable).
+ *   - StreamEvent: discriminated union of SSE event types emitted by /chat/stream.
+ *   - Intent: enum of the 7 intent categories the orchestrator classifies into.
+ */
 export interface Document {
   doc_id: string
   doc_name: string

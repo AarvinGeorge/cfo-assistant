@@ -1,3 +1,20 @@
+"""
+test_document_tools_integration.py
+
+Tests that verify the MCP document tool wrappers delegate correctly to their underlying skills and Redis store.
+
+Role in project:
+    Test suite — verifies the behaviour of backend.mcp_server.tools.document_tools. Run with:
+    pytest tests/test_document_tools_integration.py -v
+
+Coverage:
+    - mcp_parse_pdf and mcp_parse_csv each call the corresponding skill function exactly once
+    - mcp_embed_chunks delegates to embed_and_upsert and handles both Chunk objects and plain dicts
+    - mcp_pinecone_search returns serialisable results converted from RetrievedChunk dataclasses
+    - register_document writes correct JSON (including chunk_count) to Redis via a pipeline
+    - delete_document removes the target document from Redis and returns True; returns False for unknown IDs
+"""
+
 import json
 import pytest
 from unittest.mock import patch, MagicMock

@@ -1,3 +1,20 @@
+"""
+pinecone_store.py
+
+Singleton accessor for the Pinecone serverless vector index that stores all
+document chunk embeddings.
+
+Role in project:
+    Infrastructure layer. Owned by the vector retrieval skill and called
+    during both document ingest (upsert) and chat query (search). Validates
+    index dimension on startup to catch misconfiguration early.
+
+Main parts:
+    - PineconeStore: initialises the Pinecone client, resolves the index by
+      name from config, and exposes the raw index handle for upsert/query ops.
+    - get_pinecone_store(): module-level singleton factory that creates the
+      store once and returns the same instance on every subsequent call.
+"""
 from functools import lru_cache
 from pinecone import Pinecone
 from backend.core.config import get_settings

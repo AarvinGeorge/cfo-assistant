@@ -1,3 +1,21 @@
+/**
+ * App.tsx
+ *
+ * Root layout component — renders the 3-panel shell that contains the
+ * entire FinSight UI.
+ *
+ * Role in project:
+ *   Single authoritative layout. There is no React Router — App.tsx IS the
+ *   application. It owns the panel width calculations, collapse transitions,
+ *   and the single fetchDocuments() call that populates LeftPanel on mount.
+ *
+ * Main parts:
+ *   - LEFT_W / RIGHT_W / COLLAPSED_W: module-level constants (280 / 340 / 48px)
+ *     used for panel sizing and CSS transitions.
+ *   - App: reads leftPanelOpen and rightPanelOpen from sessionStore, renders
+ *     three flex children (LeftPanel, CenterPanel, RightPanel) with width
+ *     transitions driven by panel state.
+ */
 import { useEffect } from 'react'
 import { Box } from '@mui/material'
 import { useSessionStore } from './stores/sessionStore'

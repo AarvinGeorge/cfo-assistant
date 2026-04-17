@@ -1,3 +1,21 @@
+/**
+ * documentStore.ts
+ *
+ * Zustand store managing the list of ingested documents and document
+ * lifecycle operations (fetch, upload, delete).
+ *
+ * Role in project:
+ *   Document feature state. Owned by LeftPanel (renders the doc list, upload
+ *   dialog). fetchDocuments() is called once on mount from App.tsx to
+ *   populate the list without redundant calls from individual panels.
+ *
+ * Main parts:
+ *   - DocumentState: documents array, loading flag, uploadLoading flag, error.
+ *   - fetchDocuments(): GET /documents/ and populates the store.
+ *   - uploadDocument(): multipart POST /documents/upload with file, doc_type,
+ *     and fiscal_year, then refetches the list.
+ *   - deleteDocument(): DELETE /documents/{doc_id} then refetches the list.
+ */
 import { create } from 'zustand'
 import axiosClient from '../api/axiosClient'
 import { Document } from '../types'

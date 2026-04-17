@@ -1,3 +1,19 @@
+"""
+test_redis_atomicity.py
+
+Tests that verify document register and delete operations use Redis pipelines for atomic execution.
+
+Role in project:
+    Test suite — verifies the atomic Redis pipeline behaviour of backend.mcp_server.tools.document_tools. Run with:
+    pytest tests/test_redis_atomicity.py -v
+
+Coverage:
+    - register_document opens a Redis pipeline, calls WATCH on the document key, issues MULTI, and executes
+    - register_document appends to an existing document list and serialises the full updated list via SET
+    - delete_document opens a Redis pipeline and calls WATCH before performing the deletion
+    - delete_document returns False without modifying Redis when the requested doc_id is not found
+"""
+
 import json
 import pytest
 from unittest.mock import patch, MagicMock

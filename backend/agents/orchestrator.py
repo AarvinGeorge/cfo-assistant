@@ -1,3 +1,32 @@
+"""
+orchestrator.py
+
+LangGraph StateGraph that routes every chat message through the correct
+processing pipeline and streams the response back to the API layer.
+
+Role in project:
+    Agent layer — the brain of FinSight. Called by the /chat and
+    /chat/stream route handlers. Receives an AgentState, runs it through
+    7 nodes with conditional branching, and returns a fully populated state
+    containing the assistant response and citations.
+
+Main parts:
+    - build_graph(): constructs and compiles the StateGraph with all nodes
+      and conditional edges. Returns a compiled graph ready for invocation.
+    - classify_intent node: uses Claude to classify the query into one of 7
+      intent categories (document_qa, financial_model, scenario_analysis,
+      general_chat, etc.).
+    - rag_retrieve node: embeds the query via Gemini, searches Pinecone,
+      and applies MMR reranking to return the top-5 most relevant chunks.
+    - financial_model_node: extracts parameters from context and runs the
+      appropriate financial model (DCF, ratios, forecast, or variance).
+    - scenario_analysis_node: runs bull/base/bear scenarios, sensitivity
+      tables, covenant stress tests, or runway calculations.
+    - response_generator node: prompts Claude with retrieved context and
+      model outputs to produce a cited, markdown-formatted answer.
+    - response_extraction node: collects the full streamed response,
+      extracts [Source: ...] citation tags, and runs citation validation.
+"""
 import json
 import re
 

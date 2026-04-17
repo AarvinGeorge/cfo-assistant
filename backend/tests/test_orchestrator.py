@@ -1,4 +1,20 @@
-"""Tests for the LangGraph orchestrator and graph state."""
+"""
+test_orchestrator.py
+
+Tests that verify the LangGraph orchestrator nodes, routing logic, and compiled graph structure.
+
+Role in project:
+    Test suite — verifies the behaviour of backend.agents.orchestrator. Run with:
+    pytest tests/test_orchestrator.py -v
+
+Coverage:
+    - AgentState TypedDict contains all expected keys (messages, intent, retrieved_chunks, citations, etc.)
+    - classify_intent returns a valid intent string and falls back to "general_chat" for unrecognised LLM output
+    - route_by_intent and post_rag_route map every intent to the correct next node, with a default fallback
+    - rag_retrieve populates retrieved_chunks and formatted_context; degrades gracefully when search raises
+    - generate_response extracts [Source: ...] citations from LLM output and appends a warning for uncited claims
+    - build_graph compiles without errors and includes all expected node names in the graph topology
+"""
 
 import sys
 from pathlib import Path

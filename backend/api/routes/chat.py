@@ -1,3 +1,22 @@
+"""
+chat.py
+
+FastAPI router handling all conversational endpoints — both blocking
+(full response) and streaming (SSE token-by-token) chat modes.
+
+Role in project:
+    HTTP layer for the chat feature. Receives requests from the React
+    CenterPanel via Axios (non-streaming) or native fetch (SSE). Delegates
+    all intelligence to the LangGraph orchestrator and handles the mechanics
+    of SSE framing and Redis checkpointer wiring.
+
+Main parts:
+    - POST /chat/: accepts a ChatRequest, runs the LangGraph graph to
+      completion, and returns the full assistant response as JSON.
+    - POST /chat/stream: accepts a ChatRequest and returns a
+      StreamingResponse that pushes SSE events (intent, retrieval,
+      response tokens, done) as the graph progresses.
+"""
 import asyncio
 import json
 import logging

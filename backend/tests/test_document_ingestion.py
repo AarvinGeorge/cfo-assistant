@@ -1,3 +1,21 @@
+"""
+test_document_ingestion.py
+
+Tests that verify PDF/CSV parsing, text chunking, financial-value normalisation, and section detection.
+
+Role in project:
+    Test suite — verifies the behaviour of backend.skills.document_ingestion. Run with:
+    pytest tests/test_document_ingestion.py -v
+
+Coverage:
+    - _normalize_financial_value strips currency symbols, parenthetical negatives, and whitespace
+    - parse_pdf extracts text and tables per page, normalises table cell values, and counts pages correctly
+    - parse_csv reads rows, strips column-header whitespace, and normalises financial values in cells
+    - hierarchical_chunk produces the correct section and row chunk types from both PDF and CSV parsed output
+    - _split_text_into_chunks respects max_tokens and produces overlapping chunks for long text
+    - _detect_section classifies headings into the correct financial section labels case-insensitively
+"""
+
 import csv
 import tempfile
 from pathlib import Path

@@ -1,3 +1,23 @@
+"""
+modeling_tools.py
+
+MCP tool implementations wrapping the four financial modeling capabilities.
+
+Role in project:
+    MCP layer — delegates to financial_modeling.py. Allows Claude to
+    trigger DCF, ratio, forecast, and variance models as structured tool
+    calls during response generation rather than as separate API requests.
+
+Main parts:
+    - mcp_run_dcf(): calls build_dcf_model() with Claude-extracted params.
+    - mcp_run_ratios(): calls build_ratio_scorecard().
+    - mcp_run_forecast(): calls build_forecast_model().
+    - mcp_run_variance(): calls build_variance_analysis().
+    - mcp_extract_financials(): calls extract_financials() to parse figures
+      from a RAG context string.
+    - mcp_save_model_output(): persists model results to the outputs dir.
+"""
+
 from backend.skills.financial_modeling import (
     extract_financials,
     build_dcf_model,

@@ -1,3 +1,19 @@
+"""
+test_documents_security.py
+
+Tests that verify the document upload endpoint enforces filename sanitisation and file-size limits.
+
+Role in project:
+    Test suite — verifies the behaviour of backend.api.routes.documents upload security. Run with:
+    pytest tests/test_documents_security.py -v
+
+Coverage:
+    - Path-traversal filenames (e.g. ../../etc/passwd.pdf) have directory components stripped on upload
+    - Filenames that attempt to overwrite sensitive files (e.g. ../../../backend/.env.csv) are sanitised
+    - Files exceeding 50 MB are rejected with HTTP 400 and a message containing "50MB"
+    - Normal, well-formed uploads continue to succeed and return the expected doc_name and chunk_count
+"""
+
 import io
 import pytest
 from unittest.mock import patch, MagicMock

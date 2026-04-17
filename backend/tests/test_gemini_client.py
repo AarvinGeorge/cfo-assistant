@@ -1,3 +1,19 @@
+"""
+test_gemini_client.py
+
+Tests that verify the GeminiClient initialises correctly and produces well-formed embeddings.
+
+Role in project:
+    Test suite — verifies the behaviour of backend.core.gemini_client. Run with:
+    pytest tests/test_gemini_client.py -v
+
+Coverage:
+    - Client initialises with the correct model name (models/gemini-embedding-001) and dimension (3072)
+    - embed_text returns a list of 3072 floats and passes the correct model and task_type to the API
+    - embed_texts (batch) returns one 3072-dimensional vector per input text
+    - An integration test (marked @pytest.mark.integration) verifies a live embedding call against the real API
+"""
+
 import pytest
 from unittest.mock import patch, MagicMock
 from backend.core.gemini_client import GeminiClient

@@ -1,3 +1,21 @@
+"""
+test_memory_tools.py
+
+Tests that verify the MCP memory, logging, citation, and export tools write and read correctly.
+
+Role in project:
+    Test suite — verifies the behaviour of backend.mcp_server.tools.memory_tools. Run with:
+    pytest tests/test_memory_tools.py -v
+
+Coverage:
+    - mcp_memory_write stores a message in Redis with an expiry via rpush and expire
+    - mcp_memory_read returns an empty list for a new session and deserialises stored messages correctly
+    - mcp_intent_log appends a JSON entry of type "intent_classification" to audit_log.jsonl
+    - mcp_citation_validator detects cited and uncited numerical claims in response text
+    - mcp_response_logger appends a JSON entry of type "qa_response" including citation_count
+    - mcp_export_trigger appends an export-type entry to audit_log.jsonl
+"""
+
 import json
 import pytest
 from unittest.mock import patch, MagicMock, call

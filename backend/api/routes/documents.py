@@ -1,3 +1,23 @@
+"""
+documents.py
+
+FastAPI router for document lifecycle management — upload, list, and delete.
+
+Role in project:
+    HTTP layer for the document ingestion pipeline. Called by the React
+    LeftPanel. On upload, orchestrates the full ingest flow: save to disk,
+    parse, chunk, embed, upsert to Pinecone, and track in Redis.
+    On delete, removes vectors from Pinecone and metadata from Redis.
+
+Main parts:
+    - POST /documents/upload: validates file (type, size, filename
+      sanitisation), saves to UPLOAD_DIR, triggers ingest pipeline,
+      and returns the new document metadata.
+    - GET /documents/: reads all doc metadata hashes from Redis and
+      returns a list of DocumentRecord objects.
+    - DELETE /documents/{doc_id}: deletes Pinecone vectors by doc_id
+      filter and removes the Redis hash.
+"""
 import os
 import uuid
 from pathlib import Path

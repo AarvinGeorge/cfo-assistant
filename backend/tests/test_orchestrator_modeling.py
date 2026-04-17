@@ -1,3 +1,20 @@
+"""
+test_orchestrator_modeling.py
+
+Tests that verify the financial modelling and scenario analysis nodes within the LangGraph orchestrator.
+
+Role in project:
+    Test suite — verifies the behaviour of financial_model_node and scenario_node in backend.agents.orchestrator. Run with:
+    pytest tests/test_orchestrator_modeling.py -v
+
+Coverage:
+    - financial_model_node invokes build_dcf_model or build_ratio_scorecard based on the LLM-selected model_type
+    - financial_model_node returns an "insufficient_data" result when the LLM signals missing inputs
+    - financial_model_node returns an "error" result for unparseable JSON or model execution exceptions
+    - scenario_node invokes calculate_cash_runway for runway analyses and run_scenario_matrix for scenario matrices
+    - generate_response calls mcp_citation_validator and appends an uncited-claims warning when validation fails
+"""
+
 import json
 import pytest
 from unittest.mock import patch, MagicMock

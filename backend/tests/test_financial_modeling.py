@@ -1,5 +1,20 @@
 """
-Tests for backend.skills.financial_modeling
+test_financial_modeling.py
+
+Tests that verify all financial modelling functions in the skills layer produce correct outputs.
+
+Role in project:
+    Test suite — verifies the behaviour of backend.skills.financial_modeling. Run with:
+    pytest tests/test_financial_modeling.py -v
+
+Coverage:
+    - _parse_number handles integers, comma-formatted numbers, empty strings, and non-numeric input
+    - extract_financials parses colon-pattern and pipe-pattern line items and skips header rows
+    - build_dcf_model projects revenue growth, warns on invalid WACC/CapEx inputs, and computes equity value and implied share price
+    - build_ratio_scorecard returns liquidity, profitability, leverage, and efficiency ratios; warns on zero divisors
+    - build_forecast_model applies CAGR or linear projection, emits warnings for short series, and includes confidence intervals
+    - build_variance_analysis flags favorable/unfavorable variances, computes percentage deviations, and warns on label mismatches
+    - store_model writes model output to a timestamped JSON file under the configured output directory
 """
 
 import json

@@ -1,4 +1,20 @@
-"""Tests for backend.skills.vector_retrieval."""
+"""
+test_vector_retrieval.py
+
+Tests that verify embedding, vector upsert, semantic search, MMR reranking, and context formatting.
+
+Role in project:
+    Test suite — verifies the behaviour of backend.skills.vector_retrieval. Run with:
+    pytest tests/test_vector_retrieval.py -v
+
+Coverage:
+    - embed_and_upsert formats vectors correctly, batches 150 chunks into two upsert calls, and returns upserted_count
+    - semantic_search returns RetrievedChunk objects with text and score extracted from Pinecone metadata; passes filter dicts through
+    - mmr_rerank selects a diverse result set (preferring c2 over redundant c1 given similar c0 already chosen)
+    - format_retrieved_context produces numbered context blocks with [Source: ...] citations; handles empty lists and missing metadata
+    - _cosine_similarity returns 1.0 for identical vectors, 0.0 for orthogonal, and -1.0 for opposite; handles zero vectors
+    - _cosine_similarity_batch produces per-row results that match individual _cosine_similarity calls
+"""
 
 import numpy as np
 import pytest

@@ -1,3 +1,21 @@
+"""
+test_config.py
+
+Tests that verify the application settings loaded from the environment are correct and complete.
+
+Role in project:
+    Test suite — verifies the behaviour of backend.core.config. Run with:
+    pytest tests/test_config.py -v
+
+Coverage:
+    - Anthropic, Gemini, and Pinecone API keys are present and correctly formatted
+    - Claude model name, max_tokens, and temperature match expected defaults
+    - Gemini embedding model name and vector dimension are correctly set
+    - Document chunking parameters (section tokens, row tokens, overlap) match expected defaults
+    - Retrieval parameters (top_k, MMR lambda, MMR fetch_k) match expected defaults
+    - get_settings() is cached and returns the same instance on repeated calls
+"""
+
 import pytest
 from backend.core.config import get_settings
 

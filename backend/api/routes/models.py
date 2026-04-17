@@ -1,3 +1,27 @@
+"""
+models.py
+
+FastAPI router exposing direct HTTP endpoints for the four financial
+modeling capabilities: DCF valuation, ratio scorecard, forecasting,
+and variance analysis.
+
+Role in project:
+    HTTP layer for the financial modeling skill. These endpoints are called
+    by the React RightPanel Quick Actions and can also be invoked directly
+    by the LangGraph financial_model_node. They are thin wrappers — all
+    logic lives in skills/financial_modeling.py.
+
+Main parts:
+    - POST /models/dcf: runs a Discounted Cash Flow valuation given revenue
+      projections, WACC, and terminal growth rate.
+    - POST /models/ratios: computes a financial ratio scorecard from income
+      statement and balance sheet figures.
+    - POST /models/forecast: generates a 12-month revenue forecast using
+      historical trends.
+    - POST /models/variance: produces an actual-vs-budget variance analysis.
+    - POST /models/save: persists any model output dict to a JSON file in
+      the outputs directory.
+"""
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Dict, List, Any, Optional

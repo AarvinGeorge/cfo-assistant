@@ -1,3 +1,24 @@
+/**
+ * LeftPanel.tsx
+ *
+ * Left panel of the 3-panel layout — the Sources panel where users manage
+ * financial documents.
+ *
+ * Role in project:
+ *   Document management UI. Reads from documentStore (document list, upload
+ *   state) and renders the list of ingested files with type chips, status
+ *   indicators, and hover-reveal delete buttons. Collapses to a 48px icon
+ *   rail showing only the upload button.
+ *
+ * Main parts:
+ *   - LeftPanel: main component with expanded/collapsed render paths.
+ *   - renderUploadDialog(): MUI Dialog for file picker, doc_type dropdown,
+ *     and fiscal_year field.
+ *   - renderSnackbar(): success/error feedback after upload, rendered in
+ *     both expanded and collapsed states to avoid silent failures.
+ *   - Document list: maps documents to ListItem rows with type chips,
+ *     status dot, and delete IconButton.
+ */
 import { useState } from 'react'
 import {
   Box, Typography, TextField, IconButton, Tooltip,

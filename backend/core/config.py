@@ -1,3 +1,19 @@
+"""
+config.py
+
+Centralised configuration for FinSight using pydantic-settings.
+
+Role in project:
+    Foundation layer. Loaded once at startup by every other backend module via
+    get_settings(). Reads all secrets and tuneable parameters from the .env
+    file so no values are ever hardcoded.
+
+Main parts:
+    - Settings: pydantic-settings model declaring 15+ typed env vars (API keys,
+      model names, chunking params, retrieval params, output paths).
+    - get_settings(): cached factory function that returns the singleton Settings
+      instance, constructed once and reused across the application lifetime.
+"""
 from functools import lru_cache
 from pathlib import Path
 

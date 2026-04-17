@@ -1,3 +1,20 @@
+"""
+gemini_client.py
+
+Thin wrapper around the Google Gemini embedding API used to convert text into
+high-dimensional vectors for semantic search.
+
+Role in project:
+    Infrastructure layer. Called by vector_retrieval.py to embed document
+    chunks at ingest time and to embed user queries at search time. Never used
+    for generation — Claude handles all reasoning.
+
+Main parts:
+    - GeminiClient: singleton wrapper that initialises the Gemini SDK and
+      exposes embed_text(), embed_query(), and embed_texts() (batch).
+      All methods use task-type hints (retrieval_document vs retrieval_query)
+      to improve embedding quality for asymmetric search.
+"""
 from typing import List
 import google.generativeai as genai
 from backend.core.config import get_settings

@@ -1,3 +1,19 @@
+"""
+test_pinecone_store.py
+
+Tests that verify PineconeStore initialisation, readiness checks, and dimension validation.
+
+Role in project:
+    Test suite — verifies the behaviour of backend.core.pinecone_store. Run with:
+    pytest tests/test_pinecone_store.py -v
+
+Coverage:
+    - PineconeStore initialises with the correct index name, namespace, and dimension (3072)
+    - A dimension mismatch between config and the live index raises a ValueError
+    - is_ready() returns True when the index responds normally and False when it raises an exception
+    - An integration test (marked @pytest.mark.integration) verifies a live connection to the Pinecone index
+"""
+
 import pytest
 from unittest.mock import patch, MagicMock
 from backend.core.pinecone_store import PineconeStore

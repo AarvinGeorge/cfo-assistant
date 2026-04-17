@@ -1,3 +1,21 @@
+/**
+ * ChatBubble.tsx
+ *
+ * Renders a single chat message as a styled bubble — user messages aligned
+ * right, assistant messages aligned left with full markdown support.
+ *
+ * Role in project:
+ *   Presentational component. Used by CenterPanel to render each message in
+ *   the conversation history. Assistant messages are rendered with
+ *   react-markdown and remark-gfm to support tables, lists, and bold text
+ *   from Claude financial analysis responses.
+ *
+ * Main parts:
+ *   - ChatBubble: accepts a ChatMessage prop and renders the appropriate
+ *     bubble layout, background colour, and alignment.
+ *   - Markdown renderer: configured with remark-gfm for GitHub Flavored
+ *     Markdown, with MUI Typography overrides for table and list styling.
+ */
 import { Box } from '@mui/material'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'

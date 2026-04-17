@@ -1,3 +1,20 @@
+"""
+memory_tools.py
+
+MCP tool implementations for conversation memory and audit logging.
+
+Role in project:
+    MCP layer — wrappers around Redis operations that give Claude structured
+    access to session history and the ability to write audit log entries.
+    Ensures every interaction is traceable for compliance purposes.
+
+Main parts:
+    - mcp_get_conversation_history(): retrieves prior messages for the
+      current session thread from the LangGraph Redis checkpointer.
+    - mcp_response_logger(): writes assistant responses to audit_log.jsonl.
+    - mcp_intent_log(): records the classified intent for each query.
+"""
+
 import json
 import re
 from datetime import datetime, timezone

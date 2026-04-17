@@ -1,3 +1,23 @@
+/**
+ * CenterPanel.tsx
+ *
+ * Centre panel of the 3-panel layout — the Chat panel where users
+ * converse with FinSight.
+ *
+ * Role in project:
+ *   Primary interaction surface. Reads from chatStore (messages, streaming
+ *   state) and sessionStore (session ID). Renders the conversation history
+ *   using ChatBubble components, shows a StreamingIndicator while a response
+ *   is in-flight, and provides the message input bar with send button.
+ *
+ * Main parts:
+ *   - CenterPanel: manages auto-scroll to latest message, input state, and
+ *     submit handler that calls chatStore.sendMessage().
+ *   - Message list: maps chatStore.messages to ChatBubble and CitationChip rows.
+ *   - Input bar: MUI TextField with conditional send button styling — active
+ *     only when input is non-empty and not streaming.
+ *   - StreamingIndicator: shown below the last message while isStreaming is true.
+ */
 import { useRef, useEffect, useState } from 'react'
 import { Box, TextField, IconButton, Typography, Tooltip } from '@mui/material'
 import SendIcon from '@mui/icons-material/Send'

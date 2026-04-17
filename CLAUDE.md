@@ -140,6 +140,46 @@ Backend: `PYTHONPATH=. uvicorn backend.api.main:app --reload --port 8000`
 
 ---
 
+## File Headers (all files — mandatory)
+
+Every source file must begin with a language-appropriate header comment, placed before any imports:
+
+**Python** — triple-double-quote docstring:
+```python
+"""
+filename.py
+
+One-sentence description of what this file does.
+
+Role in project:
+    1-2 sentences on how this file fits in the architecture — which layer it
+    belongs to, what calls it, what it calls.
+
+Main parts:
+    - ClassName or function_name: what it does
+    - ClassName or function_name: what it does
+"""
+```
+
+**TypeScript/TSX** — JSDoc block comment:
+```typescript
+/**
+ * filename.tsx
+ *
+ * One-sentence description of what this file does.
+ *
+ * Role in project:
+ *   1-2 sentences on how this file fits in the architecture.
+ *
+ * Main parts:
+ *   - ComponentName or functionName: what it does
+ */
+```
+
+`__init__.py` and type declaration files get a one-liner docstring minimum. Every new file created must include this header.
+
+---
+
 ## File Structure (current)
 
 ```

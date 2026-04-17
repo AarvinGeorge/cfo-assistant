@@ -1,3 +1,23 @@
+/**
+ * RightPanel.tsx
+ *
+ * Right panel of the 3-panel layout — the Studio panel showing live KPI
+ * cards and quick-action shortcuts.
+ *
+ * Role in project:
+ *   CFO dashboard surface. Reads from dashboardStore (KPI values, loading
+ *   state) and chatStore (sendMessage for Quick Actions). Fires fetchKPIs()
+ *   on mount to populate cards from indexed documents. Collapses to a 48px
+ *   icon rail.
+ *
+ * Main parts:
+ *   - RightPanel: expanded/collapsed render paths.
+ *   - KPI grid: 6 cards (Revenue, Gross Margin, EBITDA, Net Income, Cash
+ *     Balance, Runway) in a 2-column MUI Grid with skeleton loaders.
+ *   - Quick Actions: 4 MUI Buttons (DCF Model, Scenario Analysis, Forecast
+ *     Revenue, Export Report) that call sendMessage() with preset prompts.
+ *   - TODO: migrate Grid to Grid2 for MUI v7 compatibility.
+ */
 import { useEffect } from 'react'
 import {
   Box, Typography, IconButton, Tooltip, Grid, Skeleton,

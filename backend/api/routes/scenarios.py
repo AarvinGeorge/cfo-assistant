@@ -1,3 +1,25 @@
+"""
+scenarios.py
+
+FastAPI router for scenario and stress-testing endpoints: bull/base/bear
+scenarios, 2D sensitivity tables, covenant stress tests, and cash runway.
+
+Role in project:
+    HTTP layer for the scenario analysis skill. Mirrors the structure of
+    models.py — thin route handlers that delegate to
+    skills/scenario_analysis.py. Called by Quick Actions in the React
+    RightPanel or directly by the LangGraph scenario_analysis_node.
+
+Main parts:
+    - POST /scenarios/run: runs a three-scenario matrix (bull/base/bear)
+      against a set of financial assumptions.
+    - POST /scenarios/sensitivity: builds a 2D sensitivity table varying
+      two input parameters across a grid.
+    - POST /scenarios/covenants: stress-tests financial covenant thresholds
+      against projected figures.
+    - POST /scenarios/runway: calculates months of cash runway given current
+      burn rate and cash balance.
+"""
 from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import Dict, List, Any, Optional

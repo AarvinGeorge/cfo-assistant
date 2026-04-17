@@ -1,8 +1,27 @@
 """
-Financial Modeling Skill for FinSight CFO Assistant.
+financial_modeling.py
 
-Provides quantitative engines for DCF models, ratio scorecards,
-forecasts, and variance analyses.
+Implements the four core financial models: DCF valuation, ratio scorecard,
+revenue forecasting, and variance analysis.
+
+Role in project:
+    Skills layer — financial computation engine. Called both by the
+    /models/* API routes (direct HTTP invocation) and by the LangGraph
+    financial_model_node (agent-driven invocation). All models validate
+    their inputs and return a structured dict with the result and any
+    data-insufficiency warnings, never silently producing unreliable output.
+
+Main parts:
+    - extract_financials(): parses structured financial figures out of a
+      RAG context string using Claude, returning a FinancialData object.
+    - build_dcf_model(): computes enterprise value via discounted cash
+      flows given revenue projections, WACC, and terminal growth rate.
+    - build_ratio_scorecard(): computes liquidity, profitability, leverage,
+      and efficiency ratios from income statement and balance sheet inputs.
+    - build_forecast_model(): projects 12-month revenue using linear
+      regression on historical data points.
+    - build_variance_analysis(): computes actual-vs-budget variance in
+      absolute and percentage terms for each line item.
 """
 
 import re

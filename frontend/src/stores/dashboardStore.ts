@@ -1,3 +1,24 @@
+/**
+ * dashboardStore.ts
+ *
+ * Zustand store for the RightPanel KPI dashboard — fetches 6 financial
+ * metrics by firing background chat queries and parsing the responses.
+ *
+ * Role in project:
+ *   KPI data layer. Called by RightPanel on mount. Uses the existing
+ *   POST /chat endpoint (non-streaming) with hardcoded natural-language
+ *   questions to extract key metrics from ingested documents without
+ *   requiring a dedicated KPI endpoint.
+ *
+ * Main parts:
+ *   - KPI_QUERIES: 6 hardcoded questions (revenue, gross margin, EBITDA,
+ *     net income, cash balance, runway).
+ *   - fetchKPIs(): fires all 6 queries in parallel and stores parsed results.
+ *   - parseKPIResponse(): extracts the numeric value from a chat response
+ *     and formats it as currency ($5.2M), percentage (45.3%), or months.
+ *   - TODO: populate change and favorable fields once prior-period comparison
+ *     queries are implemented.
+ */
 import { create } from 'zustand'
 import axiosClient from '../api/axiosClient'
 import { KPIValue } from '../types'

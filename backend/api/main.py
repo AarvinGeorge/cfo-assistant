@@ -1,3 +1,22 @@
+"""
+main.py
+
+FastAPI application factory — wires together all routers, configures CORS,
+and manages service lifecycle (startup validation and graceful shutdown).
+
+Role in project:
+    HTTP entry point. This is the module Uvicorn loads:
+    uvicorn backend.api.main:app. It registers all route prefixes, sets
+    CORS policy to allow the Vite dev server at localhost:5173, and runs
+    a health check on startup to confirm Redis, Pinecone, and API keys are
+    reachable before accepting traffic.
+
+Main parts:
+    - app: the FastAPI instance with lifespan context manager.
+    - lifespan(): async context that validates all external dependencies on
+      startup and closes the Redis connection on shutdown.
+    - Router registrations: /health, /chat, /documents, /models, /scenarios.
+"""
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware

@@ -1,3 +1,20 @@
+"""
+test_dcf_scaling.py
+
+Tests that verify proportional scaling behaviour of DCF model projections and ROIC tax-rate handling.
+
+Role in project:
+    Test suite — verifies the behaviour of backend.skills.financial_modeling DCF projection scaling. Run with:
+    pytest tests/test_dcf_scaling.py -v
+
+Coverage:
+    - CapEx, D&A, and NWC change each maintain a constant percentage of revenue across all projection years
+    - Free cash flow grows proportionally to revenue when all component percentages are fixed
+    - Each projection dict includes the expected da, capex, and nwc_change fields
+    - A zero-revenue baseline does not cause a crash and still returns an enterprise_value
+    - ROIC in the ratio scorecard correctly applies a caller-supplied tax rate (and defaults to 25% when omitted)
+"""
+
 import pytest
 from backend.skills.financial_modeling import build_dcf_model, build_ratio_scorecard
 

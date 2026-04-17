@@ -1,3 +1,18 @@
+"""
+test_chat_fixes.py
+
+Tests that verify secure error handling in the SSE streaming chat endpoint.
+
+Role in project:
+    Test suite — verifies the behaviour of backend.api.routes.chat SSE error paths. Run with:
+    pytest tests/test_chat_fixes.py -v
+
+Coverage:
+    - SSE error events must not leak internal details such as Redis URLs, hostnames, or passwords
+    - Error events must always surface a generic user-friendly message to the caller
+    - The synchronous /chat/ endpoint continues to work correctly after async streaming changes were introduced
+"""
+
 import json
 import pytest
 from unittest.mock import patch, MagicMock

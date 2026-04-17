@@ -1,3 +1,25 @@
+"""
+financial_mcp_server.py
+
+Registers all 26 FinSight financial tools with the MCP (Model Context
+Protocol) server so Claude can call them as structured tool invocations.
+
+Role in project:
+    MCP layer — tool registration hub. Exposes the full capabilities of the
+    skills layer (document search, financial modeling, scenario analysis,
+    output generation, memory) as MCP tools. Claude can call these tools
+    directly during generation, enabling richer, more structured responses
+    than pure text generation.
+
+Main parts:
+    - FastMCP app instance: the MCP server object that tools are registered
+      against.
+    - Tool registrations (26 total): each @mcp.tool() decorator wires a
+      Python function to an MCP tool name with a typed parameter schema.
+      Tools are grouped by domain: document (5), modeling (6), scenario (5),
+      output (5), memory and audit (5).
+"""
+
 from mcp.server.fastmcp import FastMCP
 from backend.mcp_server.tools.document_tools import (
     mcp_parse_pdf, mcp_parse_csv, mcp_embed_chunks,

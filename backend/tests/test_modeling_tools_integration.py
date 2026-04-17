@@ -1,3 +1,21 @@
+"""
+test_modeling_tools_integration.py
+
+Tests that verify the MCP modelling and scenario tool wrappers correctly delegate to the skills layer.
+
+Role in project:
+    Test suite — verifies the behaviour of backend.mcp_server.tools.modeling_tools and scenario_tools. Run with:
+    pytest tests/test_modeling_tools_integration.py -v
+
+Coverage:
+    - mcp_run_dcf, mcp_run_ratios, mcp_run_forecast, and mcp_run_variance each produce the expected output keys
+    - mcp_extract_financials extracts line items from text chunks
+    - mcp_store_model writes a JSON file and returns a path ending in ".json"
+    - mcp_run_scenarios returns bull, base, and bear scenario results
+    - mcp_sensitivity_matrix returns a 2-D table matching the specified axis lengths
+    - mcp_runway_calc and mcp_covenant_check delegate correctly and return the expected top-level keys
+"""
+
 import pytest
 from unittest.mock import patch
 from backend.mcp_server.tools.modeling_tools import (

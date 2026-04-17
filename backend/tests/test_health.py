@@ -1,3 +1,19 @@
+"""
+test_health.py
+
+Tests that verify the /health endpoint correctly reflects the status of all dependent services.
+
+Role in project:
+    Test suite — verifies the behaviour of backend.api.routes.health. Run with:
+    pytest tests/test_health.py -v
+
+Coverage:
+    - /health returns HTTP 200 and includes status, redis, pinecone, anthropic_key, and gemini_key fields
+    - status is "ok" when both Redis and Pinecone report healthy
+    - status is "degraded" when Redis is unreachable
+    - status is "degraded" when Pinecone is unreachable
+"""
+
 import pytest
 from unittest.mock import patch
 from httpx import AsyncClient, ASGITransport

@@ -1,3 +1,20 @@
+"""
+test_base_agent.py
+
+Tests that verify the abstract base class contract enforced by BaseAgent.
+
+Role in project:
+    Test suite — verifies the behaviour of backend.agents.base_agent. Run with:
+    pytest tests/test_base_agent.py -v
+
+Coverage:
+    - Confirms BaseAgent is an abstract class (ABC subclass)
+    - Confirms direct instantiation of BaseAgent raises TypeError
+    - Confirms a concrete subclass correctly inherits the Anthropic client instance
+    - Confirms the model name and max_tokens defaults match config values
+    - Confirms `run` is declared abstract on BaseAgent and must be implemented by subclasses
+"""
+
 import pytest
 from abc import ABC
 from unittest.mock import patch, MagicMock

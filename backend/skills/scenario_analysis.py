@@ -1,9 +1,24 @@
 """
-Scenario Analysis Skill for FinSight CFO Assistant.
+scenario_analysis.py
 
-Provides what-if analysis and strategic planning tools including
-scenario matrices, sensitivity tables, break-even analysis,
-cash runway projections, and covenant stress testing.
+Implements strategic what-if analysis: multi-scenario matrices,
+sensitivity tables, covenant stress tests, and cash runway calculation.
+
+Role in project:
+    Skills layer — scenario planning engine. Companion to
+    financial_modeling.py. Called by the /scenarios/* API routes and the
+    LangGraph scenario_analysis_node. All outputs include assumption
+    documentation so CFOs can present them with full transparency.
+
+Main parts:
+    - run_scenario_matrix(): generates bull, base, and bear case projections
+      by applying percentage adjustments to a set of base assumptions.
+    - build_sensitivity_table(): produces a 2D grid varying two parameters
+      (e.g. revenue growth x margin) across configurable ranges.
+    - stress_test_covenants(): checks projected figures against debt
+      covenant thresholds and flags periods where covenants are at risk.
+    - calculate_cash_runway(): computes months of remaining runway given
+      current cash balance and monthly burn rate.
 """
 
 from typing import Dict, List, Any, Optional

@@ -1,3 +1,19 @@
+/**
+ * StreamingIndicator.tsx
+ *
+ * Animated indicator shown while the assistant is generating a response,
+ * with a label that updates to reflect the current pipeline stage.
+ *
+ * Role in project:
+ *   Streaming UX feedback. Shown by CenterPanel below the message list
+ *   whenever chatStore.isStreaming is true. Reads currentIntent from
+ *   chatStore to display contextual labels (Classifying, Retrieving,
+ *   Generating) that mirror the LangGraph node progression.
+ *
+ * Main parts:
+ *   - StreamingIndicator: renders three animated dots with a stage label
+ *     derived from the current SSE event type.
+ */
 import { Box, CircularProgress, Typography } from '@mui/material'
 
 interface StreamingIndicatorProps {

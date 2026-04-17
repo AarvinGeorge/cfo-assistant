@@ -1,3 +1,29 @@
+"""
+document_ingestion.py
+
+Parses uploaded financial documents and splits them into semantically
+meaningful chunks ready for embedding and vector storage.
+
+Role in project:
+    Skills layer — document pipeline entry point. Called by the documents
+    API route immediately after a file is saved to disk. Supports PDF
+    (via pdfplumber), CSV (via pandas), plain text, and HTML
+    (via BeautifulSoup). Produces Chunk objects consumed by
+    vector_retrieval.py for embedding and upsert.
+
+Main parts:
+    - Chunk: dataclass holding chunk text, embedding vector slot, and
+      metadata (doc_id, doc_name, doc_type, fiscal_year, section, page).
+    - parse_pdf(): extracts full text and tables from a PDF using
+      pdfplumber, with pdfminer.six as fallback.
+    - parse_csv(): reads a CSV with pandas and serialises rows as text.
+    - hierarchical_chunking(): splits parsed text into section-level
+      chunks (512 tokens, 64-token overlap) and row-level chunks
+      (128 tokens) for table content, using tiktoken for counting.
+    - ingest_document(): top-level entry point that calls the right parser,
+      chunks the output, and returns a list of Chunk objects.
+"""
+
 import uuid
 import re
 from typing import List, Dict, Any, Optional

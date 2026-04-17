@@ -1,3 +1,19 @@
+"""
+test_gemini_batch.py
+
+Tests that verify the GeminiClient sends multiple texts as a single batched embedding API call.
+
+Role in project:
+    Test suite — verifies the batch embedding behaviour of backend.core.gemini_client. Run with:
+    pytest tests/test_gemini_batch.py -v
+
+Coverage:
+    - embed_texts issues exactly one API call for a list of multiple texts (not N individual calls)
+    - The entire list is passed as the content argument to genai.embed_content
+    - A single-item list is handled correctly via the batch path
+    - Each returned embedding vector has the expected 3072 dimensions
+"""
+
 import pytest
 from unittest.mock import patch, MagicMock
 from backend.core.gemini_client import GeminiClient
