@@ -178,6 +178,11 @@ Main parts:
 
 `__init__.py` and type declaration files get a one-liner docstring minimum. Every new file created must include this header.
 
+**Maintenance rule (Claude's responsibility):**
+- Whenever a file is modified, Claude must update its header to reflect any changes to functionality, main parts, or role in the project.
+- This is enforced at the `verification-before-completion` step — before claiming any task is done, Claude must confirm that every file it touched has an accurate, up-to-date header.
+- Stale headers are treated as a bug, not a cosmetic issue.
+
 ---
 
 ## File Structure (current)
