@@ -10,10 +10,17 @@
  *   Note: SSE streaming uses native fetch, not this client, because Axios
  *   does not support streaming responses.
  *
+ *   Also maintains the connectionStore's backendUnreachable flag: any
+ *   successful response (even 4xx/5xx) clears it; network-level errors
+ *   (ERR_NETWORK / "Network Error") set it so the BackendUnreachableModal
+ *   can show a blocking dialog.
+ *
  * Main parts:
- *   - api: Axios instance with baseURL, Content-Type header, and 30s timeout.
+ *   - axiosClient: Axios instance with baseURL and Content-Type header.
+ *   - Response interceptor: bidirectionally updates useConnectionStore.
  */
 import axios from 'axios'
+import { useConnectionStore } from '../stores/connectionStore'
 
 const axiosClient = axios.create({
   baseURL: 'http://localhost:8000',
@@ -21,8 +28,24 @@ const axiosClient = axios.create({
 })
 
 axiosClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // Any HTTP response (2xx) proves the backend is reachable.
+    useConnectionStore.getState().setBackendUnreachable(false)
+    return response
+  },
   (error) => {
+    // Distinguish "backend down" (no response object) from "backend returned
+    // an HTTP error" (response exists with 4xx/5xx).
+    const isNetworkError =
+      error.code === 'ERR_NETWORK' ||
+      error.message === 'Network Error' ||
+      !error.response
+    if (isNetworkError) {
+      useConnectionStore.getState().setBackendUnreachable(true)
+    } else {
+      // HTTP-level error means backend IS reachable — clear the flag.
+      useConnectionStore.getState().setBackendUnreachable(false)
+    }
     console.error('API Error:', error.response?.data || error.message)
     return Promise.reject(error)
   }

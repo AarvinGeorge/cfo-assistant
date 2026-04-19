@@ -2,7 +2,8 @@
  * App.tsx
  *
  * Root layout component — renders the 3-panel shell that contains the
- * entire FinSight UI.
+ * entire FinSight UI, plus a top-level BackendUnreachableModal that blocks
+ * interaction when the backend is down.
  *
  * Role in project:
  *   Single authoritative layout. There is no React Router — App.tsx IS the
@@ -14,7 +15,7 @@
  *     used for panel sizing and CSS transitions.
  *   - App: reads leftPanelOpen and rightPanelOpen from sessionStore, renders
  *     three flex children (LeftPanel, CenterPanel, RightPanel) with width
- *     transitions driven by panel state.
+ *     transitions driven by panel state, plus BackendUnreachableModal.
  */
 import { useEffect } from 'react'
 import { Box } from '@mui/material'
@@ -23,6 +24,7 @@ import { useDocumentStore } from './stores/documentStore'
 import LeftPanel from './components/panels/LeftPanel'
 import CenterPanel from './components/panels/CenterPanel'
 import RightPanel from './components/panels/RightPanel'
+import BackendUnreachableModal from './components/common/BackendUnreachableModal'
 
 const LEFT_W = 280
 const RIGHT_W = 340
@@ -85,6 +87,9 @@ export default function App() {
       >
         <RightPanel />
       </Box>
+
+      {/* Blocking modal shown when backend is unreachable (ERR_NETWORK) */}
+      <BackendUnreachableModal />
     </Box>
   )
 }
