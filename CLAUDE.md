@@ -116,6 +116,21 @@ Revenue, Gross Margin, EBITDA, Net Income, Cash Balance, Cash Runway
 
 ---
 
+## Design Source of Truth (Figma)
+
+All UI design decisions trace back to this Figma file. Any deviation between the live app and the file should be treated as drift to be reconciled.
+
+- **File:** [FinSight CFO — 3-Panel Redesign](https://www.figma.com/design/L9k0ZL0p6CGWBfuUOt31ec/FinSight-CFO---3-Panel-Redesign)
+- **File key:** `L9k0ZL0p6CGWBfuUOt31ec`
+- **Workspace:** *Aarvin George's team* (Full/expert seat on account `tomgrg8@gmail.com`)
+- **Primary frames:**
+  - `Main Layout` (id `2:2`) — 1440×900, the full 3-panel view
+  - `Both Panels Collapsed` (id `3:2`) — rails collapsed state
+  - `Design Tokens` (id `3:32`) — swatches (`#1C1C1E` bg, `#2C2C2E` surface, `#3A3A3C` elevated, `#7C4DFF` accent, `#F5F5F7` text primary, `#8E8E93` text secondary, `#10B964` success)
+- **Rule of thumb:** before creating a new component, check the file for existing variants or tokens. Before proposing a visual change, mock it in the file first so the diff is visible and token-correct.
+
+---
+
 ## Backend API Surface (15 endpoints)
 
 | Method | Path | Purpose |
@@ -272,6 +287,7 @@ conda run -n finsight pytest tests/ -v -m integration          # integration (23
 | 2026-04-12 | 3-panel layout over sidebar+pages | NotebookLM-inspired, no routing needed for single-context CFO tool |
 | 2026-04-12 | React Router removed | Single App.tsx shell is sufficient, reduces bundle size |
 | 2026-04-12 | fetchDocuments() in App.tsx only | Prevents duplicate API calls from LeftPanel + RightPanel mounting simultaneously |
+| 2026-04-19 | Figma file `L9k0ZL0p6CGWBfuUOt31ec` is the design source of truth | Single canonical file; prevents drift and ensures every design decision is token-correct before it lands in code |
 
 ## Known TODOs (Phase 6)
 
