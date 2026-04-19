@@ -14,6 +14,8 @@ Coverage:
     - Document chunking parameters (section tokens, row tokens, overlap) match expected defaults
     - Retrieval parameters (top_k, MMR lambda, MMR fetch_k) match expected defaults
     - get_settings() is cached and returns the same instance on repeated calls
+    - Empty OS env vars (e.g. Claude Code's ANTHROPIC_API_KEY="") do not shadow .env values
+    - Non-empty OS env vars still override .env (standard pydantic-settings precedence preserved)
 """
 
 import pytest
@@ -22,18 +24,18 @@ from backend.core.config import get_settings
 
 def test_settings_loads_anthropic_key():
     settings = get_settings()
-    assert settings.anthropic_api_key != ""
-    assert settings.anthropic_api_key.startswith("sk-ant-")
+    assert settings.anthropic_api_key.get_secret_value() != ""
+    assert settings.anthropic_api_key.get_secret_value().startswith("sk-ant-")
 
 
 def test_settings_loads_gemini_key():
     settings = get_settings()
-    assert settings.gemini_api_key != ""
+    assert settings.gemini_api_key.get_secret_value() != ""
 
 
 def test_settings_loads_pinecone_key():
     settings = get_settings()
-    assert settings.pinecone_api_key != ""
+    assert settings.pinecone_api_key.get_secret_value() != ""
     assert settings.pinecone_index_name == "finsight-index"
 
 
@@ -68,3 +70,49 @@ def test_get_settings_is_cached():
     s1 = get_settings()
     s2 = get_settings()
     assert s1 is s2
+
+
+# ─── Regression tests for Claude Code env-shadow (fixed 2026-04-19) ───────────
+#
+# Pydantic-settings precedence is OS env > .env file. When Claude Code (or any
+# parent process) exports a sensitive var as an empty string, the empty string
+# shadows the real value in backend/.env and the backend fails to start with
+# "AssertionError: ANTHROPIC_API_KEY is not set in .env". get_settings() must
+# strip empty sensitive vars from os.environ before constructing Settings.
+
+def test_empty_anthropic_env_does_not_shadow_dotenv(monkeypatch):
+    """Empty ANTHROPIC_API_KEY in os.environ must fall through to .env."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "")
+    get_settings.cache_clear()
+    settings = get_settings()
+    assert settings.anthropic_api_key.get_secret_value() != "", (
+        "empty ANTHROPIC_API_KEY in os.environ should not shadow the .env value"
+    )
+    assert settings.anthropic_api_key.get_secret_value().startswith("sk-ant-")
+
+
+def test_empty_gemini_env_does_not_shadow_dotenv(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "")
+    get_settings.cache_clear()
+    settings = get_settings()
+    assert settings.gemini_api_key.get_secret_value() != ""
+
+
+def test_empty_pinecone_env_does_not_shadow_dotenv(monkeypatch):
+    monkeypatch.setenv("PINECONE_API_KEY", "")
+    get_settings.cache_clear()
+    settings = get_settings()
+    assert settings.pinecone_api_key.get_secret_value() != ""
+
+
+def test_non_empty_env_still_overrides_dotenv(monkeypatch):
+    """
+    Guardrail: the fix must only strip *empty* overrides, not all overrides.
+    Real non-empty env vars should still win over .env so production
+    deployments (where secrets come from a secret manager injected via env)
+    continue to work.
+    """
+    monkeypatch.setenv("CLAUDE_MODEL", "claude-opus-override-for-test")
+    get_settings.cache_clear()
+    settings = get_settings()
+    assert settings.claude_model == "claude-opus-override-for-test"

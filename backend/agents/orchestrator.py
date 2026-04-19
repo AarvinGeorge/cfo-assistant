@@ -62,7 +62,7 @@ def get_llm():
     settings = get_settings()
     return ChatAnthropic(
         model=settings.claude_model,
-        api_key=settings.anthropic_api_key,
+        api_key=settings.anthropic_api_key.get_secret_value(),
         max_tokens=settings.claude_max_tokens,
         temperature=settings.claude_temperature,
     )

@@ -41,6 +41,6 @@ async def health_check() -> dict:
         "status": "ok" if all_ok else "degraded",
         "redis": redis_ok,
         "pinecone": pinecone_ok,
-        "anthropic_key": bool(settings.anthropic_api_key),
-        "gemini_key": bool(settings.gemini_api_key),
+        "anthropic_key": bool(settings.anthropic_api_key.get_secret_value()),
+        "gemini_key": bool(settings.gemini_api_key.get_secret_value()),
     }

@@ -25,7 +25,7 @@ from backend.core.config import get_settings
 class GeminiClient:
     def __init__(self):
         settings = get_settings()
-        genai.configure(api_key=settings.gemini_api_key)
+        genai.configure(api_key=settings.gemini_api_key.get_secret_value())
         self.model = settings.gemini_embed_model
         self.dimension = settings.gemini_embed_dimension
 

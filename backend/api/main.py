@@ -33,9 +33,9 @@ async def lifespan(app: FastAPI):
     from backend.core.redis_client import ping_redis
     settings = get_settings()
 
-    assert settings.anthropic_api_key, "ANTHROPIC_API_KEY is not set in .env"
-    assert settings.gemini_api_key, "GEMINI_API_KEY is not set in .env"
-    assert settings.pinecone_api_key, "PINECONE_API_KEY is not set in .env"
+    assert settings.anthropic_api_key.get_secret_value(), "ANTHROPIC_API_KEY is not set in .env"
+    assert settings.gemini_api_key.get_secret_value(), "GEMINI_API_KEY is not set in .env"
+    assert settings.pinecone_api_key.get_secret_value(), "PINECONE_API_KEY is not set in .env"
 
     if not ping_redis():
         print("WARNING: Redis is not reachable. Start with: docker run -d --name redis-finsight -p 6379:6379 redis:alpine")

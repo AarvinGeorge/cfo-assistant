@@ -27,7 +27,7 @@ class PineconeStore:
         self.namespace = settings.pinecone_namespace
         self.dimension = settings.gemini_embed_dimension
 
-        pc = Pinecone(api_key=settings.pinecone_api_key)
+        pc = Pinecone(api_key=settings.pinecone_api_key.get_secret_value())
         self._index = pc.Index(self.index_name)
 
         stats = self._index.describe_index_stats()
