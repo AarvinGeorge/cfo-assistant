@@ -1,5 +1,11 @@
 .PHONY: start stop status doctor install
 
+# Pin to the finsight env's binaries directly. `conda run -n finsight` is
+# unreliable when a system-Python uvicorn exists earlier on PATH — it will
+# launch the wrong uvicorn against the wrong Python and fail with
+# `ModuleNotFoundError: No module named 'fastapi'`.
+FINSIGHT_BIN := $(HOME)/miniconda3/envs/finsight/bin
+
 # ── start: bring up Redis + Backend + Frontend; health-gate before declaring ready ─
 start:
 	@mkdir -p logs
@@ -8,7 +14,7 @@ start:
 	@docker start redis-finsight 2>/dev/null || docker run -d --name redis-finsight -p 6379:6379 redis:alpine
 	@echo "✅ Redis running on localhost:6379"
 	@# Start backend in background with logs captured to logs/backend.log
-	@cd $(CURDIR) && PYTHONPATH=. conda run --no-capture-output -n finsight uvicorn backend.api.main:app --reload --port 8000 > logs/backend.log 2>&1 &
+	@cd $(CURDIR) && PYTHONPATH=. $(FINSIGHT_BIN)/uvicorn backend.api.main:app --reload --port 8000 > logs/backend.log 2>&1 &
 	@printf "⏳ Waiting for backend /health..."
 	@for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do \
 		if curl -sf http://localhost:8000/health >/dev/null 2>&1; then break; fi; \
@@ -57,6 +63,16 @@ doctor:
 		echo "  ✅ Redis container     : Up"; \
 	else \
 		echo "  ❌ Redis container     : NOT RUNNING — try: docker start redis-finsight"; \
+		fails=$$((fails+1)); \
+	fi; \
+	if [ -x $(FINSIGHT_BIN)/uvicorn ]; then \
+		echo "  ✅ finsight uvicorn    : $(FINSIGHT_BIN)/uvicorn"; \
+		shadow=$$(command -v uvicorn 2>/dev/null); \
+		if [ -n "$$shadow" ] && [ "$$shadow" != "$(FINSIGHT_BIN)/uvicorn" ]; then \
+			echo "     ⚠️  PATH shadow       : $$shadow (Makefile pins absolute path, so 'make start' is safe)"; \
+		fi; \
+	else \
+		echo "  ❌ finsight uvicorn    : MISSING at $(FINSIGHT_BIN)/uvicorn — run: make install"; \
 		fails=$$((fails+1)); \
 	fi; \
 	if lsof -iTCP:8000 -sTCP:LISTEN >/dev/null 2>&1; then \
