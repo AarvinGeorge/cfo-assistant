@@ -123,9 +123,65 @@ def main() -> int:
         help="Actually delete (default is dry-run, prints intended deletions only).",
     )
     args = parser.parse_args()
+
+    # Lazy imports — keep module importable in tests without network deps
+    from backend.core.pinecone_store import get_pinecone_store
+    from backend.core.redis_client import get_redis_client
+
+    store = get_pinecone_store()
+    redis_client = get_redis_client()
+    namespace = store.namespace
+    redis_key = "finsight:documents"
+
     print("=== FinSight Orphan Cleanup ===")
-    print(f"Mode: {'APPLY (destructive)' if args.apply else 'DRY-RUN (no changes)'}")
+    print(f"Mode      : {'APPLY (destructive)' if args.apply else 'DRY-RUN (no changes)'}")
+    print(f"Namespace : {namespace}")
+    print(f"Redis key : {redis_key}")
     print()
+
+    print("Scanning Pinecone for orphan doc_ids...")
+    orphans = find_orphan_doc_ids(
+        pinecone_index=store.index,
+        redis_client=redis_client,
+        namespace=namespace,
+        redis_key=redis_key,
+    )
+
+    if not orphans:
+        print("✅ No orphans found — nothing to do.")
+        return 0
+
+    print(f"Found {len(orphans)} orphan doc_id(s). Counting vectors per doc_id...")
+    counts = count_vectors_per_doc_id(
+        pinecone_index=store.index,
+        namespace=namespace,
+        doc_ids=orphans,
+    )
+
+    total = sum(c["count"] for c in counts.values())
+    print()
+    print(f"{'doc_id':<40} {'vectors':>8}  doc_name")
+    print("-" * 90)
+    for did, info in sorted(counts.items()):
+        print(f"{did:<40} {info['count']:>8}  {info['doc_name']}")
+    print(f"\nTotal vectors to delete: {total}")
+    print()
+
+    if not args.apply:
+        print("Dry-run only — no changes made. Re-run with --apply to delete.")
+        return 0
+
+    audit_path = (
+        Path("logs") / f"cleanup_audit_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.jsonl"
+    )
+    print(f"Applying deletions; audit log → {audit_path}")
+    delete_orphan_vectors(
+        pinecone_index=store.index,
+        namespace=namespace,
+        orphan_counts=counts,
+        audit_log_path=audit_path,
+    )
+    print(f"✅ Deleted {total} vectors across {len(orphans)} doc_id(s).")
     return 0
 
 
