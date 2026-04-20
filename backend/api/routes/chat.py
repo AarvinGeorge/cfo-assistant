@@ -8,7 +8,9 @@ Role in project:
     HTTP layer for the chat feature. Receives requests from the React
     CenterPanel via Axios (non-streaming) or native fetch (SSE). Delegates
     all intelligence to the LangGraph orchestrator and handles the mechanics
-    of SSE framing and Redis checkpointer wiring.
+    of SSE framing and Redis checkpointer wiring. Plumbs workspace_id,
+    user_id, and chat_session_id from RequestContext into the graph state
+    so multi-tenant RAG namespace isolation works end-to-end.
 
 Main parts:
     - POST /chat/: accepts a ChatRequest, runs the LangGraph graph to
@@ -23,12 +25,13 @@ import logging
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from langchain_core.messages import HumanMessage
 
 from backend.agents.orchestrator import build_graph, get_checkpointer
+from backend.core.context import RequestContext, get_request_context
 from backend.mcp_server.tools.memory_tools import (
     mcp_memory_write, mcp_intent_log, mcp_response_logger,
 )
@@ -41,6 +44,7 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 class ChatRequest(BaseModel):
     message: str
     session_id: Optional[str] = None
+    chat_session_id: Optional[str] = None
 
 
 class ChatResponse(BaseModel):
@@ -52,12 +56,13 @@ class ChatResponse(BaseModel):
 
 
 @router.post("/")
-async def chat(request: ChatRequest):
+async def chat(request: ChatRequest, ctx: RequestContext = Depends(get_request_context)):
     """
     Process a chat message through the orchestrator graph.
     Returns the full response (non-streaming).
     """
     session_id = request.session_id or str(uuid.uuid4())
+    chat_session_id = request.chat_session_id or f"ses_default_{ctx.workspace_id}"
 
     # Build graph with checkpointer for conversation persistence
     try:
@@ -67,7 +72,7 @@ async def chat(request: ChatRequest):
         # Fallback without checkpointer if Redis is unavailable
         graph = build_graph(checkpointer=None)
 
-    config = {"configurable": {"thread_id": session_id}}
+    config = {"configurable": {"thread_id": chat_session_id}}
 
     # Invoke the graph (run sync call in thread to avoid blocking the event loop)
     result = await asyncio.to_thread(
@@ -76,6 +81,9 @@ async def chat(request: ChatRequest):
             "messages": [HumanMessage(content=request.message)],
             "current_query": request.message,
             "session_id": session_id,
+            "user_id": ctx.user_id,
+            "workspace_id": ctx.workspace_id,
+            "chat_session_id": chat_session_id,
             "intent": "",
             "retrieved_chunks": [],
             "formatted_context": "",
@@ -110,12 +118,13 @@ async def chat(request: ChatRequest):
 
 
 @router.post("/stream")
-async def chat_stream(request: ChatRequest):
+async def chat_stream(request: ChatRequest, ctx: RequestContext = Depends(get_request_context)):
     """
     Process a chat message and stream the response via SSE.
     Uses Server-Sent Events for real-time token streaming.
     """
     session_id = request.session_id or str(uuid.uuid4())
+    chat_session_id = request.chat_session_id or f"ses_default_{ctx.workspace_id}"
 
     async def event_generator():
         try:
@@ -129,7 +138,7 @@ async def chat_stream(request: ChatRequest):
             except Exception:
                 graph = build_graph(checkpointer=None)
 
-            config = {"configurable": {"thread_id": session_id}}
+            config = {"configurable": {"thread_id": chat_session_id}}
 
             # Stream through the graph nodes
             intent_sent = False
@@ -141,6 +150,9 @@ async def chat_stream(request: ChatRequest):
                     "messages": [HumanMessage(content=request.message)],
                     "current_query": request.message,
                     "session_id": session_id,
+                    "user_id": ctx.user_id,
+                    "workspace_id": ctx.workspace_id,
+                    "chat_session_id": chat_session_id,
                     "intent": "",
                     "retrieved_chunks": [],
                     "formatted_context": "",
