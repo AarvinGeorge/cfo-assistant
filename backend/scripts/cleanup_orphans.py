@@ -91,6 +91,28 @@ def count_vectors_per_doc_id(
     return counts
 
 
+def delete_orphan_vectors(
+    pinecone_index,
+    namespace: str,
+    orphan_counts: dict[str, dict],
+    audit_log_path: Path,
+) -> None:
+    """Delete each orphan doc_id's vectors via metadata-filter delete; audit each op."""
+    audit_log_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(audit_log_path, "a") as f:
+        for doc_id, info in orphan_counts.items():
+            pinecone_index.delete(filter={"doc_id": doc_id}, namespace=namespace)
+            entry = {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "action": "delete_orphan",
+                "doc_id": doc_id,
+                "doc_name": info.get("doc_name", "?"),
+                "vector_count": info.get("count", 0),
+                "namespace": namespace,
+            }
+            f.write(json.dumps(entry) + "\n")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Delete Pinecone vectors with no Redis registry entry."
