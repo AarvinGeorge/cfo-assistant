@@ -1,18 +1,19 @@
 """
 memory_tools.py
 
-MCP tool implementations for conversation memory and audit logging.
+MCP tool implementations for audit logging and citation validation.
 
 Role in project:
-    MCP layer — wrappers around Redis operations that give Claude structured
-    access to session history and the ability to write audit log entries.
-    Ensures every interaction is traceable for compliance purposes.
+    MCP layer — file-only tools exposed to Claude for compliance and
+    quality gates. Conversation memory itself is managed by LangGraph's
+    SqliteSaver checkpointer (PR #4); this module no longer handles
+    message persistence.
 
 Main parts:
-    - mcp_get_conversation_history(): retrieves prior messages for the
-      current session thread from the LangGraph Redis checkpointer.
     - mcp_response_logger(): writes assistant responses to audit_log.jsonl.
     - mcp_intent_log(): records the classified intent for each query.
+    - mcp_citation_validator(): checks every numerical claim has a source.
+    - mcp_export_trigger(): signals the output-generation agent.
 """
 
 import json
@@ -21,28 +22,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List
 
-from backend.core.redis_client import get_redis_client
 from backend.core.config import get_settings
 
 AUDIT_LOG_FILE = "audit_log.jsonl"
-
-
-def mcp_memory_read(session_id: str) -> list:
-    """Read session conversation history from Redis."""
-    client = get_redis_client()
-    key = f"finsight:session:{session_id}:messages"
-    messages_json = client.lrange(key, 0, -1)
-    return [json.loads(m) for m in messages_json]
-
-
-def mcp_memory_write(session_id: str, message: dict) -> bool:
-    """Write new conversation turn to Redis session store."""
-    client = get_redis_client()
-    key = f"finsight:session:{session_id}:messages"
-    client.rpush(key, json.dumps(message))
-    # Set TTL of 24 hours for session data
-    client.expire(key, 86400)
-    return True
 
 
 def mcp_intent_log(session_id: str, intent: str, query: str) -> bool:

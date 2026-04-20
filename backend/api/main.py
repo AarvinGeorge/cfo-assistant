@@ -7,14 +7,15 @@ and manages service lifecycle (startup validation and graceful shutdown).
 Role in project:
     HTTP entry point. This is the module Uvicorn loads:
     uvicorn backend.api.main:app. It registers all route prefixes, sets
-    CORS policy to allow the Vite dev server at localhost:5173, and runs
-    a health check on startup to confirm Redis, Pinecone, and API keys are
-    reachable before accepting traffic.
+    CORS policy to allow the Vite dev server at localhost:5173, and
+    asserts required API keys are present on startup before accepting
+    traffic.
 
 Main parts:
     - app: the FastAPI instance with lifespan context manager.
-    - lifespan(): async context that validates all external dependencies on
-      startup and closes the Redis connection on shutdown.
+    - lifespan(): async context that validates presence of API keys on
+      startup. No external service ping — SQLite is in-process, Pinecone
+      is health-checked per-request via /health.
     - Router registrations: /health, /chat, /documents, /models, /scenarios.
 """
 from contextlib import asynccontextmanager
@@ -30,15 +31,11 @@ from backend.api.routes.chat import router as chat_router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from backend.core.config import get_settings
-    from backend.core.redis_client import ping_redis
     settings = get_settings()
 
     assert settings.anthropic_api_key.get_secret_value(), "ANTHROPIC_API_KEY is not set in .env"
     assert settings.gemini_api_key.get_secret_value(), "GEMINI_API_KEY is not set in .env"
     assert settings.pinecone_api_key.get_secret_value(), "PINECONE_API_KEY is not set in .env"
-
-    if not ping_redis():
-        print("WARNING: Redis is not reachable. Start with: docker run -d --name redis-finsight -p 6379:6379 redis:alpine")
 
     yield
 

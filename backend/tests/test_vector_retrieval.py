@@ -8,8 +8,8 @@ Role in project:
     pytest tests/test_vector_retrieval.py -v
 
 Coverage:
-    - embed_and_upsert formats vectors correctly, batches 150 chunks into two upsert calls, and returns upserted_count
-    - semantic_search returns RetrievedChunk objects with text and score extracted from Pinecone metadata; passes filter dicts through
+    - embed_and_upsert formats vectors correctly, batches 150 chunks into two upsert calls, returns upserted_count, and accepts an explicit namespace
+    - semantic_search returns RetrievedChunk objects with text and score extracted from Pinecone metadata; passes filter dicts through; raises ValueError when namespace is None
     - mmr_rerank selects a diverse result set (preferring c2 over redundant c1 given similar c0 already chosen)
     - format_retrieved_context produces numbered context blocks with [Source: ...] citations; handles empty lists and missing metadata
     - _cosine_similarity returns 1.0 for identical vectors, 0.0 for orthogonal, and -1.0 for opposite; handles zero vectors
@@ -72,7 +72,7 @@ class TestEmbedAndUpsert:
         client.embed_texts.return_value = [[0.1, 0.2], [0.3, 0.4]]
         store = _mock_store()
 
-        result = embed_and_upsert(chunks, gemini_client=client, store=store)
+        result = embed_and_upsert(chunks, namespace="test-ns", gemini_client=client, store=store)
 
         assert result["upserted_count"] == 2
         assert result["doc_id"] == "d1"
@@ -91,7 +91,7 @@ class TestEmbedAndUpsert:
 
     def test_empty_chunks(self):
         """Empty chunks list returns zero count."""
-        result = embed_and_upsert([])
+        result = embed_and_upsert([], namespace="test_ns")
         assert result == {"upserted_count": 0, "doc_id": None}
 
     def test_batching_150_chunks(self):
@@ -101,7 +101,7 @@ class TestEmbedAndUpsert:
         client.embed_texts.return_value = [[0.1, 0.2]] * 150
         store = _mock_store()
 
-        result = embed_and_upsert(chunks, gemini_client=client, store=store)
+        result = embed_and_upsert(chunks, namespace="test_ns", gemini_client=client, store=store)
 
         assert result["upserted_count"] == 150
         assert store.index.upsert.call_count == 2
@@ -151,7 +151,7 @@ class TestSemanticSearch:
             ]
         }
 
-        results = semantic_search("revenue growth", gemini_client=client, store=store)
+        results = semantic_search("revenue growth", namespace="test-ns", gemini_client=client, store=store)
 
         assert len(results) == 2
         assert isinstance(results[0], RetrievedChunk)
@@ -181,7 +181,7 @@ class TestSemanticSearch:
         store.index.query.return_value = {"matches": []}
 
         filter_dict = {"doc_type": "10-K"}
-        semantic_search("test", filter_dict=filter_dict, gemini_client=client, store=store)
+        semantic_search("test", filter_dict=filter_dict, namespace="test-ns", gemini_client=client, store=store)
 
         call_kwargs = store.index.query.call_args.kwargs
         assert call_kwargs["filter"] == {"doc_type": "10-K"}

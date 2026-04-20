@@ -312,7 +312,9 @@ class TestHierarchicalChunkPdf:
         with patch("backend.skills.document_ingestion.get_settings", return_value=mock_settings):
             chunks = hierarchical_chunk(parsed, doc_metadata)
 
-        assert len(chunks[0].chunk_id) == 36  # UUID format
+        # chunk_id uses deterministic format <doc_id>:<4-digit position>
+        assert chunks[0].chunk_id.startswith(f"{doc_metadata['doc_id']}:")
+        assert chunks[0].chunk_id.split(":")[1].isdigit()
 
 
 # ── hierarchical_chunk (CSV) ────────────────────────────────────────────────
@@ -442,3 +444,69 @@ class TestDetectSection:
 
     def test_opex(self):
         assert _detect_section("Operating Expenses") == "opex"
+
+
+class TestDeterministicChunkIds:
+    """New chunk_id format for PR #3: <doc_id>:<position> using a running counter."""
+
+    def test_section_chunks_get_deterministic_ids(self):
+        from backend.skills.document_ingestion import hierarchical_chunk
+
+        parsed = {
+            "pages": [
+                {"page_number": 1, "text": "Some narrative text. " * 100, "tables": []}
+            ]
+        }
+        doc_metadata = {"doc_id": "doc_abcd1234", "doc_name": "x.pdf",
+                        "doc_type": "10-K", "fiscal_year": "2025"}
+
+        chunks = hierarchical_chunk(parsed, doc_metadata)
+        section_chunks = [c for c in chunks if c.metadata.get("chunk_type") == "section"]
+        assert len(section_chunks) >= 1
+        for c in section_chunks:
+            assert c.chunk_id.startswith("doc_abcd1234:")
+            assert c.chunk_id.split(":")[1].isdigit()
+
+    def test_row_chunks_get_deterministic_ids(self):
+        from backend.skills.document_ingestion import hierarchical_chunk
+
+        parsed = {
+            "pages": [
+                {
+                    "page_number": 1,
+                    "text": "",
+                    "tables": [
+                        [["Metric", "FY24", "FY25"], ["Revenue", "100", "110"], ["EBITDA", "20", "25"]]
+                    ],
+                }
+            ]
+        }
+        doc_metadata = {"doc_id": "doc_abcd1234", "doc_name": "x.pdf",
+                        "doc_type": "10-K", "fiscal_year": "2025"}
+
+        chunks = hierarchical_chunk(parsed, doc_metadata)
+        row_chunks = [c for c in chunks if c.metadata.get("chunk_type") == "row"]
+        assert len(row_chunks) == 2
+        for c in row_chunks:
+            assert c.chunk_id.startswith("doc_abcd1234:")
+
+    def test_section_and_row_chunks_do_not_collide(self):
+        """Regression guard: running counter must be shared across chunk types."""
+        from backend.skills.document_ingestion import hierarchical_chunk
+
+        parsed = {
+            "pages": [
+                {
+                    "page_number": 1,
+                    "text": "Section text. " * 100,
+                    "tables": [
+                        [["H", "V"], ["a", "1"], ["b", "2"], ["c", "3"]]
+                    ],
+                }
+            ]
+        }
+        doc_metadata = {"doc_id": "doc_coll", "doc_name": "x.pdf",
+                        "doc_type": "10-K", "fiscal_year": "2025"}
+        chunks = hierarchical_chunk(parsed, doc_metadata)
+        ids = [c.chunk_id for c in chunks]
+        assert len(ids) == len(set(ids)), f"Duplicate chunk_ids detected: {ids}"

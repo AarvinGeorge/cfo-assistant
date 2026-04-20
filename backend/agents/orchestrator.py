@@ -16,8 +16,9 @@ Main parts:
     - classify_intent node: uses Claude to classify the query into one of 7
       intent categories (document_qa, financial_model, scenario_analysis,
       general_chat, etc.).
-    - rag_retrieve node: embeds the query via Gemini, searches Pinecone,
-      and applies MMR reranking to return the top-5 most relevant chunks.
+    - rag_retrieve node: embeds the query via Gemini, searches Pinecone
+      within the state's workspace_id namespace, and applies MMR reranking
+      to return the top-5 most relevant chunks.
     - financial_model_node: extracts parameters from context and runs the
       appropriate financial model (DCF, ratios, forecast, or variance).
     - scenario_analysis_node: runs bull/base/bear scenarios, sensitivity
@@ -31,7 +32,7 @@ import json
 import re
 
 from langgraph.graph import StateGraph, END
-from langgraph.checkpoint.redis import RedisSaver
+from langgraph.checkpoint.sqlite import SqliteSaver
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 
@@ -118,7 +119,11 @@ def rag_retrieve(state: AgentState) -> dict:
     query = state["current_query"]
 
     try:
-        candidates = semantic_search(query, top_k=8)
+        candidates = semantic_search(
+            query,
+            top_k=8,
+            namespace=state["workspace_id"],
+        )
         reranked = mmr_rerank(query, candidates, top_k=5)
 
         chunks_as_dicts = [
@@ -416,13 +421,17 @@ def build_graph(checkpointer=None):
 
 
 def get_checkpointer():
-    """Create a Redis-backed checkpointer for conversation persistence."""
+    """SQLite-backed checkpointer; shares data/finsight.db with the control plane."""
+    import sqlite3
+    from backend.core.config import get_settings
     settings = get_settings()
-    redis_url = f"redis://{settings.redis_host}:{settings.redis_port}/{settings.redis_db}"
-    return RedisSaver.from_conn_string(redis_url)
+    db_url = getattr(settings, "database_url", "sqlite:///data/finsight.db")
+    db_path = db_url.replace("sqlite:///", "")
+    conn = sqlite3.connect(db_path, check_same_thread=False)
+    return SqliteSaver(conn)
 
 
 def get_compiled_graph():
-    """Get the compiled graph with Redis checkpointer."""
+    """Get the compiled graph with SQLite checkpointer."""
     checkpointer = get_checkpointer()
     return build_graph(checkpointer=checkpointer)

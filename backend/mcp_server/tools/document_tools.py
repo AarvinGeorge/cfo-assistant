@@ -7,29 +7,28 @@ Role in project:
     MCP layer — thin wrappers around vector_retrieval.py that expose
     document search capabilities as callable MCP tools. Claude invokes
     these during response generation to fetch cited source material.
+    The document registry (list/create/delete) has moved to SQLite in
+    PR #3/#4; see `list_documents_sql()` below and the routes in
+    backend/api/routes/documents.py for the authoritative paths.
 
 Main parts:
-    - mcp_search_documents(): semantic search across all indexed chunks.
-    - mcp_get_document_list(): returns metadata for all ingested documents.
-    - mcp_get_document_chunk(): fetches a specific chunk by ID.
-    - mcp_citation_validator(): verifies that a [Source: ...] citation
-      exists in the indexed documents before including it in a response.
-    - mcp_get_fiscal_years(): returns all fiscal years present in the index.
+    - mcp_parse_pdf / mcp_parse_csv: parser wrappers.
+    - mcp_embed_chunks / mcp_pinecone_upsert: legacy single-tenant embed
+      helpers (callable via MCP but not used internally; will need
+      workspace_id plumbing before being suitable for multi-tenant use).
+    - mcp_pinecone_search: semantic search wrapper.
+    - list_documents_sql(workspace_id, session): SQL-backed list used by
+      the /documents GET route.
 """
 
-import json
 import uuid
 from typing import List, Dict, Any, Optional
 
 from backend.core.config import get_settings
-from backend.core.redis_client import get_redis_client
 from backend.core.gemini_client import GeminiClient
 from backend.core.pinecone_store import get_pinecone_store
 from backend.skills.document_ingestion import parse_pdf, parse_csv, hierarchical_chunk, Chunk
 from backend.skills.vector_retrieval import embed_and_upsert, semantic_search, RetrievedChunk
-
-
-DOCS_REDIS_KEY = "finsight:documents"
 
 
 def mcp_parse_pdf(file_path: str) -> dict:
@@ -92,66 +91,31 @@ def mcp_pinecone_search(query: str, top_k: int = 5, filter_dict: dict = None) ->
     ]
 
 
-def mcp_list_documents() -> list:
-    """List all ingested documents with metadata."""
-    redis_client = get_redis_client()
-    docs_json = redis_client.get(DOCS_REDIS_KEY)
-    if not docs_json:
-        return []
-    return json.loads(docs_json)
+def list_documents_sql(workspace_id: str, session) -> list[dict]:
+    """
+    List documents in a workspace from SQLite.
 
+    Returns dicts shaped identically to the legacy Redis-backed
+    `mcp_list_documents()` output so frontend callers don't change.
+    """
+    from backend.db.models import Document
 
-def register_document(doc_metadata: dict, chunk_count: int) -> None:
-    """Track an ingested document in Redis using a pipeline for atomicity."""
-    redis_client = get_redis_client()
-
-    with redis_client.pipeline() as pipe:
-        pipe.watch(DOCS_REDIS_KEY)
-        docs_json = redis_client.get(DOCS_REDIS_KEY)
-        docs = json.loads(docs_json) if docs_json else []
-
-        doc_entry = {
-            **doc_metadata,
-            "chunk_count": chunk_count,
-            "status": "indexed",
+    rows = (
+        session.query(Document)
+        .filter(Document.workspace_id == workspace_id, Document.status == "indexed")
+        .order_by(Document.created_at.desc())
+        .all()
+    )
+    return [
+        {
+            "doc_id": r.id,
+            "doc_name": r.name,
+            "doc_type": r.doc_type,
+            "fiscal_year": r.fiscal_year,
+            "chunk_count": r.chunk_count,
+            "status": r.status,
         }
-
-        existing_idx = next(
-            (i for i, d in enumerate(docs) if d.get("doc_id") == doc_metadata.get("doc_id")),
-            None,
-        )
-        if existing_idx is not None:
-            docs[existing_idx] = doc_entry
-        else:
-            docs.append(doc_entry)
-
-        pipe.multi()
-        pipe.set(DOCS_REDIS_KEY, json.dumps(docs))
-        pipe.execute()
+        for r in rows
+    ]
 
 
-def delete_document(doc_id: str) -> bool:
-    """Remove a document from tracking list and vectors, using pipeline for atomicity."""
-    redis_client = get_redis_client()
-
-    with redis_client.pipeline() as pipe:
-        pipe.watch(DOCS_REDIS_KEY)
-        docs_json = redis_client.get(DOCS_REDIS_KEY)
-        if not docs_json:
-            return False
-
-        docs = json.loads(docs_json)
-        new_docs = [d for d in docs if d.get("doc_id") != doc_id]
-
-        if len(new_docs) == len(docs):
-            return False
-
-        pipe.multi()
-        pipe.set(DOCS_REDIS_KEY, json.dumps(new_docs))
-        pipe.execute()
-
-    # Delete vectors from Pinecone (outside pipeline — separate service)
-    store = get_pinecone_store()
-    store.index.delete(filter={"doc_id": doc_id}, namespace=store.namespace)
-
-    return True

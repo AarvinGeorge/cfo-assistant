@@ -23,7 +23,7 @@ Main parts:
 from mcp.server.fastmcp import FastMCP
 from backend.mcp_server.tools.document_tools import (
     mcp_parse_pdf, mcp_parse_csv, mcp_embed_chunks,
-    mcp_pinecone_upsert, mcp_pinecone_search, mcp_list_documents,
+    mcp_pinecone_upsert, mcp_pinecone_search,
 )
 from backend.mcp_server.tools.modeling_tools import (
     mcp_extract_financials, mcp_run_dcf, mcp_run_ratios,
@@ -37,7 +37,7 @@ from backend.mcp_server.tools.output_tools import (
     mcp_render_excel, mcp_render_pdf, mcp_render_chart, mcp_file_serve,
 )
 from backend.mcp_server.tools.memory_tools import (
-    mcp_memory_read, mcp_memory_write, mcp_intent_log,
+    mcp_intent_log,
     mcp_citation_validator, mcp_response_logger, mcp_export_trigger,
 )
 
@@ -49,7 +49,6 @@ mcp.tool()(mcp_parse_csv)
 mcp.tool()(mcp_embed_chunks)
 mcp.tool()(mcp_pinecone_upsert)
 mcp.tool()(mcp_pinecone_search)
-mcp.tool()(mcp_list_documents)
 
 # ── Modeling tools ────────────────────────────────────────────────────────────
 mcp.tool()(mcp_extract_financials)
@@ -71,9 +70,7 @@ mcp.tool()(mcp_render_pdf)
 mcp.tool()(mcp_render_chart)
 mcp.tool()(mcp_file_serve)
 
-# ── Memory & audit tools ──────────────────────────────────────────────────────
-mcp.tool()(mcp_memory_read)
-mcp.tool()(mcp_memory_write)
+# ── Audit + validation tools (memory is LangGraph SqliteSaver's job) ──────────
 mcp.tool()(mcp_intent_log)
 mcp.tool()(mcp_citation_validator)
 mcp.tool()(mcp_response_logger)

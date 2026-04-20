@@ -1,4 +1,4 @@
-.PHONY: start stop status doctor stats cleanup-orphans install
+.PHONY: start stop status doctor stats migrate-to-workspace-schema install
 
 # Pin to the finsight env's binaries directly. `conda run -n finsight` is
 # unreliable when a system-Python uvicorn exists earlier on PATH — it will
@@ -6,13 +6,10 @@
 # `ModuleNotFoundError: No module named 'fastapi'`.
 FINSIGHT_BIN := $(HOME)/miniconda3/envs/finsight/bin
 
-# ── start: bring up Redis + Backend + Frontend; health-gate before declaring ready ─
+# ── start: bring up Backend + Frontend; health-gate before declaring ready ──
 start:
 	@mkdir -p logs
 	@echo "🚀 Starting FinSight CFO Assistant..."
-	@# Start Redis if not running
-	@docker start redis-finsight 2>/dev/null || docker run -d --name redis-finsight -p 6379:6379 redis:alpine
-	@echo "✅ Redis running on localhost:6379"
 	@# Start backend in background with logs captured to logs/backend.log
 	@cd $(CURDIR) && PYTHONPATH=. $(FINSIGHT_BIN)/uvicorn backend.api.main:app --reload --port 8000 > logs/backend.log 2>&1 &
 	@printf "⏳ Waiting for backend /health..."
@@ -40,18 +37,16 @@ start:
 	@echo "   Press Ctrl+C to stop all services"
 	@wait
 
-# ── stop: terminate all three services ───────────────────────────────────────
+# ── stop: terminate backend + frontend ──────────────────────────────────────
 stop:
 	@echo "Stopping FinSight..."
 	@-pkill -f "uvicorn backend.api.main:app" 2>/dev/null
 	@-pkill -f "vite" 2>/dev/null
-	@-docker stop redis-finsight 2>/dev/null
 	@echo "✅ All services stopped"
 
 # ── status: quick one-shot status snapshot ───────────────────────────────────
 status:
 	@echo "=== FinSight Status ==="
-	@docker ps --filter name=redis-finsight --format "Redis: {{.Status}}" 2>/dev/null || echo "Redis: not running"
 	@curl -s http://localhost:8000/health 2>/dev/null | python3 -m json.tool || echo "Backend: not running"
 	@curl -s http://localhost:5173 >/dev/null 2>&1 && echo "Frontend: running" || echo "Frontend: not running"
 
@@ -59,12 +54,6 @@ status:
 doctor:
 	@echo "=== FinSight Doctor ==="
 	@fails=0; \
-	if docker ps --filter name=redis-finsight --format '{{.Names}}' | grep -q redis-finsight; then \
-		echo "  ✅ Redis container     : Up"; \
-	else \
-		echo "  ❌ Redis container     : NOT RUNNING — try: docker start redis-finsight"; \
-		fails=$$((fails+1)); \
-	fi; \
 	if [ -x $(FINSIGHT_BIN)/uvicorn ]; then \
 		echo "  ✅ finsight uvicorn    : $(FINSIGHT_BIN)/uvicorn"; \
 		shadow=$$(command -v uvicorn 2>/dev/null); \
@@ -73,6 +62,12 @@ doctor:
 		fi; \
 	else \
 		echo "  ❌ finsight uvicorn    : MISSING at $(FINSIGHT_BIN)/uvicorn — run: make install"; \
+		fails=$$((fails+1)); \
+	fi; \
+	if [ -f data/finsight.db ]; then \
+		echo "  ✅ SQLite db           : data/finsight.db exists"; \
+	else \
+		echo "  ❌ SQLite db           : data/finsight.db missing — run: alembic upgrade head"; \
 		fails=$$((fails+1)); \
 	fi; \
 	if lsof -iTCP:8000 -sTCP:LISTEN >/dev/null 2>&1; then \
@@ -119,19 +114,22 @@ doctor:
 		exit 1; \
 	fi
 
-# ── stats: cross-referenced Pinecone + Redis snapshot (orphan detection) ─────
+# ── stats: cross-referenced Pinecone + SQLite snapshot (orphan detection) ────
 stats:
 	@cd $(CURDIR) && PYTHONPATH=. $(FINSIGHT_BIN)/python -m backend.scripts.stats
 
-# ── cleanup-orphans: remove Pinecone vectors with no Redis registry entry ────
-cleanup-orphans:
-	@cd $(CURDIR) && PYTHONPATH=. $(FINSIGHT_BIN)/python backend/scripts/cleanup_orphans.py $(if $(APPLY),--apply,)
+# ── migrate-to-workspace-schema: port single-tenant data into multi-tenant schema ──
+migrate-to-workspace-schema:
+	@cd $(CURDIR) && PYTHONPATH=. $(FINSIGHT_BIN)/python backend/scripts/migrate_to_workspace_schema.py \
+	    $(if $(APPLY),--apply,) \
+	    --surviving-file "$(SURVIVING_FILE)"
 
 # ── install: first-time setup ────────────────────────────────────────────────
 install:
 	@echo "📦 Installing dependencies..."
 	conda create -n finsight python=3.13 -y 2>/dev/null || true
 	cd $(CURDIR) && conda run -n finsight pip install -r backend/requirements.txt
+	cd $(CURDIR) && conda run -n finsight alembic upgrade head
 	cd $(CURDIR)/frontend && npm install
 	@echo "✅ Dependencies installed"
 	@echo ""

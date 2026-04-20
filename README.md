@@ -24,7 +24,7 @@ A locally-deployed, RAG-powered financial intelligence assistant for CFOs. Inges
 │  │      │                     covenants, runway)              │ │
 │  │      └─ generate_response (citation-validated markdown)    │ │
 │  │                                                            │ │
-│  │   Redis-backed checkpointer per session_id                 │ │
+│  │   SqliteSaver checkpointer per session_id                  │ │
 │  └────────────────────────────────────────────────────────────┘ │
 │                                                                  │
 │  ┌────────────────────────────────────────────────────────────┐ │
@@ -35,11 +35,13 @@ A locally-deployed, RAG-powered financial intelligence assistant for CFOs. Inges
 │  │  MCP Server (26 tools: citation validator, audit logger…)  │ │
 │  └────────────────────────────────────────────────────────────┘ │
 │                                                                  │
-│  ┌─────────────┐  ┌──────────────┐  ┌──────────────────────┐   │
-│  │  Pinecone   │  │    Redis     │  │    File Storage      │   │
-│  │  (3072-dim, │  │  (session +  │  │  data/uploads/       │   │
-│  │   cosine)   │  │   doc reg.)  │  │  audit_log.jsonl     │   │
-│  └─────────────┘  └──────────────┘  └──────────────────────┘   │
+│  ┌──────────────────┐  ┌───────────────────┐  ┌─────────────┐  │
+│  │  Pinecone        │  │  SQLite           │  │  File Store │  │
+│  │  (3072-dim,      │  │  (data/finsight   │  │  data/      │  │
+│  │   cosine;        │  │   .db: workspaces,│  │  uploads/   │  │
+│  │   namespace per  │  │   documents, chkp)│  │  {wks}/{doc}│  │
+│  │   workspace)     │  └───────────────────┘  └─────────────┘  │
+│  └──────────────────┘                                           │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -48,11 +50,11 @@ A locally-deployed, RAG-powered financial intelligence assistant for CFOs. Inges
 | Layer | Choice |
 |-------|--------|
 | Backend | Python 3.13, FastAPI |
-| Agent Orchestration | LangGraph (StateGraph, conditional routing, Redis checkpoint) |
+| Agent Orchestration | LangGraph (StateGraph, conditional routing, SqliteSaver checkpoint) |
 | LLM | Anthropic Claude `claude-sonnet-4-6` (via `langchain-anthropic`) |
 | Embeddings | Google Gemini `gemini-embedding-001` (3072-dim) |
-| Vector Store | Pinecone (serverless, cosine) |
-| Memory | Redis (Docker) |
+| Vector Store | Pinecone (serverless, cosine; namespace per workspace) |
+| Control Plane | SQLite (`data/finsight.db`) + SQLAlchemy 2.x + Alembic |
 | Tool Protocol | MCP via `mcp` SDK (FastMCP) — 26 tools |
 | Frontend | React 18 + TypeScript + Vite + MUI v6 |
 | State | Zustand (5 stores; `sessionStore` persisted to localStorage) |
@@ -75,7 +77,6 @@ A locally-deployed, RAG-powered financial intelligence assistant for CFOs. Inges
 
 - **Python 3.13** via conda
 - **Node.js 18+**
-- **Docker** (for Redis)
 - **API keys:** Anthropic, Google Gemini, Pinecone
 
 ## Quick Start
@@ -88,8 +89,8 @@ cp backend/.env.example backend/.env    # then add your API keys
 # Create Pinecone index in the console:
 #   name: finsight-index, dim: 3072, metric: cosine, type: serverless
 
-make install    # conda env + pip install + npm install
-make start      # Redis + backend (health-gated) + frontend
+make install    # conda env + pip install + alembic upgrade head + npm install
+make start      # backend (health-gated) + frontend — no Docker required
 ```
 
 `make start` polls `GET /health` for up to 15 s before declaring the backend ready. If it fails to come up, the last 20 lines of `logs/backend.log` are tailed and make exits non-zero — so silent failures are impossible.
@@ -101,7 +102,7 @@ Open **http://localhost:5173**.
 ```bash
 make start     # bring everything up
 make status    # one-shot snapshot
-make doctor    # diagnose any issue (Redis, port 8000, /health, port 5173, .env keys, env binary + PATH shadow)
+make doctor    # diagnose any issue (SQLite db, port 8000, /health, port 5173, .env keys, env binary + PATH shadow)
 make stop      # terminate all services
 tail -f logs/backend.log logs/frontend.log
 ```
@@ -109,30 +110,28 @@ tail -f logs/backend.log logs/frontend.log
 ## Manual Setup (fallback if `make` isn't available)
 
 ```bash
-# 1. Redis (docker) — port mapping is mandatory
-docker run -d --name redis-finsight -p 6379:6379 redis:alpine
-
-# 2. Backend
+# 1. Backend
 conda create -n finsight python=3.13 -y
 conda activate finsight
 pip install -r backend/requirements.txt
+alembic upgrade head                       # creates data/finsight.db
 PYTHONPATH=. uvicorn backend.api.main:app --reload --port 8000
 
-# 3. Frontend (new terminal)
+# 2. Frontend (new terminal)
 cd frontend && npm install && npm run dev   # localhost:5173
 
-# 4. Verify
+# 3. Verify
 curl -sf http://localhost:8000/health | python3 -m json.tool
-# → {"status": "ok", "redis": true, "pinecone": true, "anthropic_key": true, "gemini_key": true}
+# → {"status": "ok", "sqlite": true, "pinecone": true, "anthropic_key": true, "gemini_key": true}
 ```
 
 ## Testing
 
 ```bash
-# Unit tests (229 tests, no external services)
+# Unit tests (242 tests, no external services)
 conda run -n finsight pytest backend/tests/ -v -k "not integration"
 
-# Integration tests (23 tests, requires Redis + Pinecone + live API keys)
+# Integration tests (requires Pinecone + live API keys)
 conda run -n finsight pytest backend/tests/ -v -m integration
 ```
 
@@ -150,9 +149,14 @@ finsight-cfo/
 │   │   └── routes/                # health · documents · chat · models · scenarios
 │   ├── core/
 │   │   ├── config.py              # SecretStr Settings + empty-env-shadow strip
+│   │   ├── context.py             # RequestContext (user_id, workspace_id) dependency
+│   │   ├── transactions.py        # StorageTransaction (atomic SQLite+Pinecone+disk)
 │   │   ├── gemini_client.py       # Gemini embedding wrapper (batch singular key)
-│   │   ├── pinecone_store.py      # Pinecone client with dim validation
-│   │   └── redis_client.py        # Redis connection + ping
+│   │   └── pinecone_store.py      # Pinecone client with dim validation + namespace support
+│   ├── db/
+│   │   ├── engine.py              # SQLAlchemy engine (WAL + foreign keys)
+│   │   ├── models.py              # ORM: User, Workspace, Document, ChatSession
+│   │   └── migrations/            # Alembic version scripts
 │   ├── skills/
 │   │   ├── document_ingestion.py  # PDF/CSV parsing + hierarchical chunking
 │   │   ├── vector_retrieval.py    # Semantic search + MMR reranking
@@ -161,7 +165,10 @@ finsight-cfo/
 │   ├── mcp_server/
 │   │   ├── financial_mcp_server.py # 26 registered tools
 │   │   └── tools/                  # Tool implementations by domain
-│   ├── tests/                      # 229 unit + 23 integration
+│   ├── scripts/
+│   │   ├── migrate_to_workspace_schema.py  # One-time data migration
+│   │   └── stats.py                        # Pinecone + SQLite cross-reference
+│   ├── tests/                      # 242 unit tests
 │   ├── .env.example
 │   └── requirements.txt
 ├── frontend/
@@ -176,9 +183,12 @@ finsight-cfo/
 │       ├── theme/muiTheme.ts      # dark + light themes with design tokens
 │       ├── App.tsx                # 3-panel shell + <BackendUnreachableModal />
 │       └── main.tsx
-├── data/uploads/                  # Uploaded documents (gitignored)
+├── data/
+│   ├── finsight.db                # SQLite control plane (gitignored)
+│   └── uploads/                   # {workspace_id}/{doc_id}.{ext} (gitignored)
+├── alembic.ini                    # Alembic migration config
 ├── logs/                          # backend.log + frontend.log (gitignored)
-├── Makefile                       # start / stop / status / doctor / install
+├── Makefile                       # start / stop / status / doctor / stats / install
 ├── CLAUDE.md                      # Project source of truth (architecture, conventions,
 │                                  #   operational gotchas, decision log)
 └── README.md                      # This file
@@ -186,10 +196,10 @@ finsight-cfo/
 
 ## Development Phases
 
-- [x] **Phase 1 — Foundation:** FastAPI scaffold, config, Pinecone/Redis/Gemini clients, MCP scaffold (26 tool stubs)
+- [x] **Phase 1 — Foundation:** FastAPI scaffold, config, Pinecone/Gemini clients, MCP scaffold (26 tool stubs)
 - [x] **Phase 2 — Ingestion & RAG:** PDF/CSV parsing, hierarchical chunking, embedding, Pinecone upsert/search, MMR reranking
 - [x] **Phase 3 — Financial Modeling:** DCF, ratio scorecard, forecasting, variance, scenarios, covenants, runway
-- [x] **Phase 4 — Agent Integration:** LangGraph orchestrator, intent routing, Redis checkpointing, SSE streaming, audit logging
+- [x] **Phase 4 — Agent Integration:** LangGraph orchestrator, intent routing, SqliteSaver checkpointing, SSE streaming, audit logging
 - [x] **Phase 5 — Frontend:** 3-panel NotebookLM-inspired layout (Sources │ Chat │ Studio), KPI dashboard, backend-unreachable modal
 - [ ] **Phase 6 — Output & Polish (in progress):**
   - [x] SecretStr masking + empty-env-shadow protection
@@ -197,20 +207,24 @@ finsight-cfo/
   - [x] Health-gated `make start` (replaces blind `sleep 2`)
   - [x] Log redirection to `logs/backend.log` + `logs/frontend.log`
   - [x] Backend-unreachable modal dialog
+  - [x] SQLite control plane (SQLAlchemy + Alembic) — document registry, LangGraph checkpoints
+  - [x] Multi-tenant scaffolding (RequestContext, StorageTransaction, namespace-per-workspace)
+  - [x] Redis removed — no Docker required for local dev
   - [ ] Excel/PDF export endpoints (`/models/export/xlsx`, `/models/export/pdf`)
   - [ ] Cloud deployment (secrets → provider secret manager)
 
 ## Troubleshooting
 
-When something's off, run **`make doctor`** first. It checks the five most common failure modes in under 2 seconds: Redis container, finsight env binary (and PATH shadow), port 8000, `/health`, port 5173, `.env` keys.
+When something's off, run **`make doctor`** first. It checks the most common failure modes in under 2 seconds: SQLite db exists, finsight env binary (and PATH shadow), port 8000, `/health`, port 5173, `.env` keys.
 
 Common pitfalls (see `CLAUDE.md` § *Operational Gotchas* for the full list):
 
-- **Redis container "Up" but backend can't connect** → the container was started without `-p 6379:6379`. Check `docker ps --filter name=redis-finsight --format '{{.Ports}}'` — you must see `0.0.0.0:6379->6379/tcp`. If not, `docker rm` and re-run with the port flag.
+- **`data/finsight.db` missing** → run `alembic upgrade head` (or `make install`) to create the schema. The Sources panel will be empty until documents are uploaded.
 - **Backend crashes on `ModuleNotFoundError: No module named 'fastapi'`** → a system-Python `uvicorn` is shadowing the conda env on PATH. The Makefile pins the absolute path (`$HOME/miniconda3/envs/finsight/bin/uvicorn`), so `make start` is safe; `make doctor` flags the shadow informationally.
 - **`ANTHROPIC_API_KEY is not set` even though `.env` has it** → a parent shell exported `ANTHROPIC_API_KEY=""`. `_strip_empty_shadow_env()` in `backend/core/config.py` handles this.
 - **"Upload failed" with no detail in the UI** → a network-level failure (backend unreachable). The `BackendUnreachableModal` should surface this; if it doesn't, check `logs/backend.log`.
 - **Chat responses flag "N uncited claims"** → prompt-engineering issue in markdown table rows, not a pipeline bug. Main figures are cited; detail rows aren't individually tagged.
+- **Sources panel empty after deleting `finsight.db`** → Pinecone vectors survive but the documents table does not. Re-upload documents or restore from a backup (`cp backup.db data/finsight.db`).
 
 ## Security
 

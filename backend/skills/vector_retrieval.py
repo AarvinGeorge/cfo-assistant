@@ -11,10 +11,12 @@ Role in project:
     to answer queries. Owns the Gemini to Pinecone data flow.
 
 Main parts:
-    - embed_and_upsert(): takes a list of Chunk objects, batches them
-      through Gemini embed_texts(), and upserts to Pinecone in groups of 100.
-    - semantic_search(): embeds a query string and runs a cosine similarity
-      search against Pinecone, returning the top-k chunk metadata dicts.
+    - embed_and_upsert(): takes a list of Chunk objects, an explicit namespace,
+      batches them through Gemini embed_texts(), and upserts to Pinecone in
+      groups of 100. Namespace is required for multi-tenant workspace isolation.
+    - semantic_search(): embeds a query string, takes an explicit namespace,
+      and runs a cosine similarity search against Pinecone, returning the
+      top-k chunk metadata dicts. Namespace is required; raises ValueError if None.
     - mmr_rerank(): applies Maximal Marginal Relevance (lambda=0.5) to
       re-order results for diversity, reducing redundant chunks in context.
     - delete_document_vectors(): removes all Pinecone vectors associated
@@ -38,12 +40,19 @@ class RetrievedChunk:
     metadata: Dict[str, Any] = field(default_factory=dict)
 
 
-def embed_and_upsert(chunks: list, gemini_client: GeminiClient = None, store=None) -> dict:
+def embed_and_upsert(
+    chunks: list,
+    namespace: str,
+    gemini_client: GeminiClient = None,
+    store=None,
+) -> dict:
     """
     Embed chunks via Gemini and upsert to Pinecone.
 
     Args:
         chunks: List of Chunk objects (from document_ingestion.py)
+        namespace: Pinecone namespace to upsert into (per-workspace in the
+            multi-tenant design)
         gemini_client: GeminiClient instance (creates new if None)
         store: PineconeStore instance (uses singleton if None)
 
@@ -79,7 +88,7 @@ def embed_and_upsert(chunks: list, gemini_client: GeminiClient = None, store=Non
     batch_size = 100
     for i in range(0, len(records), batch_size):
         batch = records[i:i + batch_size]
-        store.index.upsert(vectors=batch, namespace=store.namespace)
+        store.index.upsert(vectors=batch, namespace=namespace)
 
     doc_id = chunks[0].metadata.get("doc_id") if chunks else None
     return {"upserted_count": len(records), "doc_id": doc_id}
@@ -89,6 +98,7 @@ def semantic_search(
     query: str,
     top_k: int = None,
     filter_dict: Optional[Dict[str, Any]] = None,
+    namespace: str = None,
     gemini_client: GeminiClient = None,
     store=None,
 ) -> List[RetrievedChunk]:
@@ -99,6 +109,8 @@ def semantic_search(
         query: Natural language query
         top_k: Number of results (defaults to config.default_top_k)
         filter_dict: Optional Pinecone metadata filter (e.g., {"doc_type": "10-K"})
+        namespace: Pinecone namespace to search in (per-workspace in the
+            multi-tenant design). Required — raises ValueError if None.
         gemini_client: GeminiClient instance
         store: PineconeStore instance
 
@@ -108,6 +120,8 @@ def semantic_search(
     settings = get_settings()
     if top_k is None:
         top_k = settings.default_top_k
+    if namespace is None:
+        raise ValueError("semantic_search requires an explicit namespace (workspace_id)")
     if gemini_client is None:
         gemini_client = GeminiClient()
     if store is None:
@@ -119,7 +133,7 @@ def semantic_search(
         vector=query_vector,
         top_k=top_k,
         include_metadata=True,
-        namespace=store.namespace,
+        namespace=namespace,
         filter=filter_dict,
     )
 

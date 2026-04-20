@@ -12,6 +12,8 @@ Coverage:
     - Auto-generated session IDs are non-empty; caller-supplied session IDs are echoed back unchanged
     - /chat/stream returns a text/event-stream content type with at least "session" and "done" SSE events
     - Graph invocation and all MCP side-effect helpers (memory_write, intent_log, response_logger) are mocked
+    - workspace_id and user_id from RequestContext are passed through to the graph state
+    - thread_id in the LangGraph config is set to chat_session_id (not the legacy session_id)
 """
 
 import json
@@ -56,7 +58,6 @@ def mock_graph():
 async def test_chat_returns_200(mock_graph):
     with patch("backend.api.routes.chat.build_graph", return_value=mock_graph), \
          patch("backend.api.routes.chat.get_checkpointer"), \
-         patch("backend.api.routes.chat.mcp_memory_write"), \
          patch("backend.api.routes.chat.mcp_intent_log"), \
          patch("backend.api.routes.chat.mcp_response_logger"):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -68,7 +69,6 @@ async def test_chat_returns_200(mock_graph):
 async def test_chat_response_shape(mock_graph):
     with patch("backend.api.routes.chat.build_graph", return_value=mock_graph), \
          patch("backend.api.routes.chat.get_checkpointer"), \
-         patch("backend.api.routes.chat.mcp_memory_write"), \
          patch("backend.api.routes.chat.mcp_intent_log"), \
          patch("backend.api.routes.chat.mcp_response_logger"):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -84,7 +84,6 @@ async def test_chat_response_shape(mock_graph):
 async def test_chat_generates_session_id(mock_graph):
     with patch("backend.api.routes.chat.build_graph", return_value=mock_graph), \
          patch("backend.api.routes.chat.get_checkpointer"), \
-         patch("backend.api.routes.chat.mcp_memory_write"), \
          patch("backend.api.routes.chat.mcp_intent_log"), \
          patch("backend.api.routes.chat.mcp_response_logger"):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -97,7 +96,6 @@ async def test_chat_generates_session_id(mock_graph):
 async def test_chat_uses_provided_session_id(mock_graph):
     with patch("backend.api.routes.chat.build_graph", return_value=mock_graph), \
          patch("backend.api.routes.chat.get_checkpointer"), \
-         patch("backend.api.routes.chat.mcp_memory_write"), \
          patch("backend.api.routes.chat.mcp_intent_log"), \
          patch("backend.api.routes.chat.mcp_response_logger"):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -110,7 +108,6 @@ async def test_chat_uses_provided_session_id(mock_graph):
 async def test_chat_stream_returns_sse(mock_graph):
     with patch("backend.api.routes.chat.build_graph", return_value=mock_graph), \
          patch("backend.api.routes.chat.get_checkpointer"), \
-         patch("backend.api.routes.chat.mcp_memory_write"), \
          patch("backend.api.routes.chat.mcp_intent_log"), \
          patch("backend.api.routes.chat.mcp_response_logger"):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -128,3 +125,32 @@ async def test_chat_stream_returns_sse(mock_graph):
     event_types = [e["type"] for e in events]
     assert "session" in event_types
     assert "done" in event_types
+
+
+@pytest.mark.asyncio
+async def test_chat_passes_workspace_id_to_orchestrator(mock_graph):
+    """The chat route's invocation should include workspace_id='wks_default' and
+    user_id='usr_default' in the graph state, and thread_id should be derived from
+    chat_session_id (not the legacy session_id)."""
+    captured = {}
+    original_invoke = mock_graph.invoke
+
+    def capturing_invoke(state, config=None):
+        captured["state"] = state
+        captured["config"] = config
+        return original_invoke(state, config)
+
+    mock_graph.invoke = capturing_invoke
+
+    with patch("backend.api.routes.chat.build_graph", return_value=mock_graph), \
+         patch("backend.api.routes.chat.get_checkpointer"), \
+         patch("backend.api.routes.chat.mcp_intent_log"), \
+         patch("backend.api.routes.chat.mcp_response_logger"):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.post("/chat/", json={"message": "hi", "session_id": "test-session"})
+
+    assert response.status_code == 200
+    assert captured["state"]["workspace_id"] == "wks_default"
+    assert captured["state"]["user_id"] == "usr_default"
+    assert captured["state"]["chat_session_id"].startswith("ses_default_")
+    assert captured["config"]["configurable"]["thread_id"].startswith("ses_default_")
