@@ -5,6 +5,7 @@ Unit tests for the orphan cleanup script. Pinecone and Redis are mocked.
 """
 from unittest.mock import MagicMock
 from backend.scripts.cleanup_orphans import find_orphan_doc_ids
+from backend.scripts.cleanup_orphans import count_vectors_per_doc_id
 
 
 def test_find_orphan_doc_ids_returns_pinecone_ids_not_in_redis():
@@ -52,3 +53,26 @@ def test_find_orphan_doc_ids_returns_empty_when_all_registered():
         redis_key="finsight:documents",
     )
     assert orphans == set()
+
+
+def test_count_vectors_per_doc_id_groups_by_metadata():
+    mock_index = MagicMock()
+    mock_index.list.return_value = iter([["v1", "v2", "v3", "v4"]])
+    fetch_response = MagicMock()
+    fetch_response.vectors = {
+        "v1": MagicMock(metadata={"doc_id": "doc_aaa", "doc_name": "A.pdf"}),
+        "v2": MagicMock(metadata={"doc_id": "doc_aaa", "doc_name": "A.pdf"}),
+        "v3": MagicMock(metadata={"doc_id": "doc_bbb", "doc_name": "B.pdf"}),
+        "v4": MagicMock(metadata={"doc_id": "doc_bbb", "doc_name": "B.pdf"}),
+    }
+    mock_index.fetch.return_value = fetch_response
+
+    counts = count_vectors_per_doc_id(
+        pinecone_index=mock_index,
+        namespace="default",
+        doc_ids={"doc_aaa", "doc_bbb"},
+    )
+
+    assert counts["doc_aaa"]["count"] == 2
+    assert counts["doc_aaa"]["doc_name"] == "A.pdf"
+    assert counts["doc_bbb"]["count"] == 2

@@ -16,6 +16,8 @@ Main parts:
       Redis registry to compute the set of stranded doc_ids.
     - delete_orphan_vectors(): executes filter-based deletes on Pinecone
       and writes per-doc-id audit log entries.
+    - count_vectors_per_doc_id(): for a given set of doc_ids, returns per-doc
+      vector counts and display metadata (doc_name) for dry-run summaries.
 """
 from __future__ import annotations
 
@@ -61,6 +63,32 @@ def find_orphan_doc_ids(
 
     # 4. Orphans = Pinecone − Redis
     return pinecone_doc_ids - redis_doc_ids
+
+
+def count_vectors_per_doc_id(
+    pinecone_index,
+    namespace: str,
+    doc_ids: set[str],
+    batch_size: int = 100,
+) -> dict[str, dict]:
+    """For the given doc_ids, return per-doc_id counts and display metadata."""
+    all_ids: list[str] = []
+    for page in pinecone_index.list(namespace=namespace):
+        all_ids.extend(page)
+
+    counts: dict[str, dict] = {did: {"count": 0, "doc_name": "?"} for did in doc_ids}
+    for i in range(0, len(all_ids), batch_size):
+        batch = all_ids[i:i + batch_size]
+        res = pinecone_index.fetch(ids=batch, namespace=namespace)
+        vectors = res.vectors if hasattr(res, "vectors") else res.get("vectors", {})
+        for vec in vectors.values():
+            md = vec.metadata if hasattr(vec, "metadata") else vec.get("metadata", {})
+            did = md.get("doc_id")
+            if did in counts:
+                counts[did]["count"] += 1
+                if counts[did]["doc_name"] == "?":
+                    counts[did]["doc_name"] = md.get("doc_name", "?")
+    return counts
 
 
 def main() -> int:
