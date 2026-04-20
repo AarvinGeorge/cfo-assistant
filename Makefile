@@ -1,4 +1,4 @@
-.PHONY: start stop status doctor stats install
+.PHONY: start stop status doctor stats cleanup-orphans install
 
 # Pin to the finsight env's binaries directly. `conda run -n finsight` is
 # unreliable when a system-Python uvicorn exists earlier on PATH — it will
@@ -122,6 +122,10 @@ doctor:
 # ── stats: cross-referenced Pinecone + Redis snapshot (orphan detection) ─────
 stats:
 	@cd $(CURDIR) && PYTHONPATH=. $(FINSIGHT_BIN)/python -m backend.scripts.stats
+
+# ── cleanup-orphans: remove Pinecone vectors with no Redis registry entry ────
+cleanup-orphans:
+	@cd $(CURDIR) && PYTHONPATH=. $(FINSIGHT_BIN)/python backend/scripts/cleanup_orphans.py $(if $(APPLY),--apply,)
 
 # ── install: first-time setup ────────────────────────────────────────────────
 install:
