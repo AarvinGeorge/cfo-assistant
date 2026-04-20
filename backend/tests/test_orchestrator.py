@@ -140,14 +140,14 @@ def test_rag_retrieve_returns_chunks_and_context():
         "backend.agents.orchestrator.format_retrieved_context",
         return_value="[1] Revenue was $10M",
     ):
-        state = {"current_query": "What was revenue?"}
+        state = {"current_query": "What was revenue?", "workspace_id": "wks_default"}
         result = rag_retrieve(state)
 
     assert len(result["retrieved_chunks"]) == 1
     assert result["retrieved_chunks"][0]["chunk_id"] == "c1"
     assert result["retrieved_chunks"][0]["text"] == "Revenue was $10M"
     assert result["formatted_context"] == "[1] Revenue was $10M"
-    mock_search.assert_called_once_with("What was revenue?", top_k=8)
+    mock_search.assert_called_once_with("What was revenue?", top_k=8, namespace="wks_default")
     mock_rerank.assert_called_once()
 
 
@@ -160,7 +160,7 @@ def test_rag_retrieve_graceful_fallback():
         "backend.agents.orchestrator.semantic_search",
         side_effect=Exception("No index"),
     ):
-        state = {"current_query": "What was revenue?"}
+        state = {"current_query": "What was revenue?", "workspace_id": "wks_default"}
         result = rag_retrieve(state)
 
     assert result["retrieved_chunks"] == []
@@ -248,3 +248,36 @@ def test_post_rag_route_defaults_to_generate_response():
     """Missing intent defaults to generate_response."""
     state = {}
     assert post_rag_route(state) == "generate_response"
+
+
+# ── 11. rag_retrieve namespace plumbing ───────────────────────────────────────
+
+
+def test_rag_retrieve_uses_workspace_id_as_namespace(monkeypatch):
+    """Verify the rag_retrieve node passes state['workspace_id'] as namespace."""
+    from backend.agents import orchestrator
+
+    captured = {}
+
+    def fake_semantic_search(query, top_k=None, namespace=None, filter_dict=None, **kw):
+        captured["namespace"] = namespace
+        captured["query"] = query
+        return []
+
+    monkeypatch.setattr(orchestrator, "semantic_search", fake_semantic_search)
+    monkeypatch.setattr(orchestrator, "mmr_rerank", lambda q, c, **kw: c)
+    monkeypatch.setattr(orchestrator, "format_retrieved_context", lambda c: "")
+
+    state = {
+        "messages": [],
+        "current_query": "test query",
+        "user_id": "usr_test",
+        "workspace_id": "wks_test_acme",
+        "chat_session_id": "ses_test",
+        "intent": "document_qa",
+        "retrieved_chunks": [],
+        "formatted_context": "",
+    }
+    orchestrator.rag_retrieve(state)
+
+    assert captured["namespace"] == "wks_test_acme"
