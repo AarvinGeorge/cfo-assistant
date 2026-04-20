@@ -93,12 +93,40 @@ def mcp_pinecone_search(query: str, top_k: int = 5, filter_dict: dict = None) ->
 
 
 def mcp_list_documents() -> list:
-    """List all ingested documents with metadata."""
+    """List all ingested documents with metadata. (Redis-backed; DEPRECATED after PR #4.)"""
     redis_client = get_redis_client()
     docs_json = redis_client.get(DOCS_REDIS_KEY)
     if not docs_json:
         return []
     return json.loads(docs_json)
+
+
+def list_documents_sql(workspace_id: str, session) -> list[dict]:
+    """
+    List documents in a workspace from SQLite.
+
+    Returns dicts shaped identically to the legacy Redis-backed
+    `mcp_list_documents()` output so frontend callers don't change.
+    """
+    from backend.db.models import Document
+
+    rows = (
+        session.query(Document)
+        .filter(Document.workspace_id == workspace_id, Document.status == "indexed")
+        .order_by(Document.created_at.desc())
+        .all()
+    )
+    return [
+        {
+            "doc_id": r.id,
+            "doc_name": r.name,
+            "doc_type": r.doc_type,
+            "fiscal_year": r.fiscal_year,
+            "chunk_count": r.chunk_count,
+            "status": r.status,
+        }
+        for r in rows
+    ]
 
 
 def register_document(doc_metadata: dict, chunk_count: int) -> None:
