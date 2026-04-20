@@ -23,7 +23,7 @@ Main parts:
 from mcp.server.fastmcp import FastMCP
 from backend.mcp_server.tools.document_tools import (
     mcp_parse_pdf, mcp_parse_csv, mcp_embed_chunks,
-    mcp_pinecone_upsert, mcp_pinecone_search, mcp_list_documents,
+    mcp_pinecone_upsert, mcp_pinecone_search,
 )
 from backend.mcp_server.tools.modeling_tools import (
     mcp_extract_financials, mcp_run_dcf, mcp_run_ratios,
@@ -49,7 +49,6 @@ mcp.tool()(mcp_parse_csv)
 mcp.tool()(mcp_embed_chunks)
 mcp.tool()(mcp_pinecone_upsert)
 mcp.tool()(mcp_pinecone_search)
-mcp.tool()(mcp_list_documents)
 
 # ── Modeling tools ────────────────────────────────────────────────────────────
 mcp.tool()(mcp_extract_financials)
