@@ -17,14 +17,23 @@
  *
  * Main parts:
  *   - axiosClient: Axios instance with baseURL and Content-Type header.
+ *   - Request interceptor: reads workspaceId from sessionStore and injects
+ *     X-Workspace-ID header on every outbound request.
  *   - Response interceptor: bidirectionally updates useConnectionStore.
  */
 import axios from 'axios'
 import { useConnectionStore } from '../stores/connectionStore'
+import { useSessionStore } from '../stores/sessionStore'
 
 const axiosClient = axios.create({
   baseURL: 'http://localhost:8000',
   headers: { 'Content-Type': 'application/json' },
+})
+
+axiosClient.interceptors.request.use((config) => {
+  const workspaceId = useSessionStore.getState().workspaceId || 'wks_default'
+  config.headers['X-Workspace-ID'] = workspaceId
+  return config
 })
 
 axiosClient.interceptors.response.use(
