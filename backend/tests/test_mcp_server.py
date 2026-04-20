@@ -22,7 +22,6 @@ EXPECTED_TOOLS = {
     "mcp_embed_chunks",
     "mcp_pinecone_upsert",
     "mcp_pinecone_search",
-    "mcp_list_documents",
     "mcp_extract_financials",
     "mcp_run_dcf",
     "mcp_run_ratios",
@@ -36,8 +35,6 @@ EXPECTED_TOOLS = {
     "mcp_citation_validator",
     "mcp_response_logger",
     "mcp_export_trigger",
-    "mcp_memory_read",
-    "mcp_memory_write",
     "mcp_intent_log",
     "mcp_render_excel",
     "mcp_render_pdf",
@@ -56,7 +53,7 @@ def test_all_tools_are_registered():
 
 def test_tool_count():
     registered = list(mcp._tool_manager.list_tools())
-    assert len(registered) == 26
+    assert len(registered) == 23
 
 
 def test_remaining_stubs_raise_not_implemented():

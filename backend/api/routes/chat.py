@@ -33,7 +33,7 @@ from langchain_core.messages import HumanMessage
 from backend.agents.orchestrator import build_graph, get_checkpointer
 from backend.core.context import RequestContext, get_request_context
 from backend.mcp_server.tools.memory_tools import (
-    mcp_memory_write, mcp_intent_log, mcp_response_logger,
+    mcp_intent_log, mcp_response_logger,
 )
 
 logger = logging.getLogger(__name__)
@@ -99,10 +99,8 @@ async def chat(request: ChatRequest, ctx: RequestContext = Depends(get_request_c
     citations = result.get("citations", [])
     model_output = result.get("model_output", {})
 
-    # Log to audit trail
+    # Log to audit trail (LangGraph's SqliteSaver handles message persistence)
     try:
-        mcp_memory_write(session_id, {"role": "user", "content": request.message})
-        mcp_memory_write(session_id, {"role": "assistant", "content": response_text})
         mcp_intent_log(session_id, intent, request.message)
         mcp_response_logger(session_id, request.message, response_text, citations)
     except Exception:
@@ -187,10 +185,8 @@ async def chat_stream(request: ChatRequest, ctx: RequestContext = Depends(get_re
             # Send completion signal
             yield f"data: {json.dumps({'type': 'done', 'citations': citations})}\n\n"
 
-            # Log to audit trail
+            # Log to audit trail (LangGraph's SqliteSaver handles message persistence)
             try:
-                mcp_memory_write(session_id, {"role": "user", "content": request.message})
-                mcp_memory_write(session_id, {"role": "assistant", "content": full_response})
                 mcp_intent_log(session_id, "", request.message)
                 mcp_response_logger(session_id, request.message, full_response, citations)
             except Exception:

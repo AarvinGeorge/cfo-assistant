@@ -58,7 +58,6 @@ def mock_graph():
 async def test_chat_returns_200(mock_graph):
     with patch("backend.api.routes.chat.build_graph", return_value=mock_graph), \
          patch("backend.api.routes.chat.get_checkpointer"), \
-         patch("backend.api.routes.chat.mcp_memory_write"), \
          patch("backend.api.routes.chat.mcp_intent_log"), \
          patch("backend.api.routes.chat.mcp_response_logger"):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -70,7 +69,6 @@ async def test_chat_returns_200(mock_graph):
 async def test_chat_response_shape(mock_graph):
     with patch("backend.api.routes.chat.build_graph", return_value=mock_graph), \
          patch("backend.api.routes.chat.get_checkpointer"), \
-         patch("backend.api.routes.chat.mcp_memory_write"), \
          patch("backend.api.routes.chat.mcp_intent_log"), \
          patch("backend.api.routes.chat.mcp_response_logger"):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -86,7 +84,6 @@ async def test_chat_response_shape(mock_graph):
 async def test_chat_generates_session_id(mock_graph):
     with patch("backend.api.routes.chat.build_graph", return_value=mock_graph), \
          patch("backend.api.routes.chat.get_checkpointer"), \
-         patch("backend.api.routes.chat.mcp_memory_write"), \
          patch("backend.api.routes.chat.mcp_intent_log"), \
          patch("backend.api.routes.chat.mcp_response_logger"):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -99,7 +96,6 @@ async def test_chat_generates_session_id(mock_graph):
 async def test_chat_uses_provided_session_id(mock_graph):
     with patch("backend.api.routes.chat.build_graph", return_value=mock_graph), \
          patch("backend.api.routes.chat.get_checkpointer"), \
-         patch("backend.api.routes.chat.mcp_memory_write"), \
          patch("backend.api.routes.chat.mcp_intent_log"), \
          patch("backend.api.routes.chat.mcp_response_logger"):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -112,7 +108,6 @@ async def test_chat_uses_provided_session_id(mock_graph):
 async def test_chat_stream_returns_sse(mock_graph):
     with patch("backend.api.routes.chat.build_graph", return_value=mock_graph), \
          patch("backend.api.routes.chat.get_checkpointer"), \
-         patch("backend.api.routes.chat.mcp_memory_write"), \
          patch("backend.api.routes.chat.mcp_intent_log"), \
          patch("backend.api.routes.chat.mcp_response_logger"):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -149,7 +144,6 @@ async def test_chat_passes_workspace_id_to_orchestrator(mock_graph):
 
     with patch("backend.api.routes.chat.build_graph", return_value=mock_graph), \
          patch("backend.api.routes.chat.get_checkpointer"), \
-         patch("backend.api.routes.chat.mcp_memory_write"), \
          patch("backend.api.routes.chat.mcp_intent_log"), \
          patch("backend.api.routes.chat.mcp_response_logger"):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:

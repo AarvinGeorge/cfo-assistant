@@ -27,8 +27,8 @@ FastAPI Backend Server
   │     └── scenario_analysis.py
   ├── MCP Server (26 registered tools)
   └── Infrastructure
-        ├── Pinecone (vector store, dim=3072, cosine)
-        ├── Redis (session memory + document tracking)
+        ├── Pinecone (vector store, dim=3072, cosine; namespace per workspace)
+        ├── SQLite (control plane: users, workspaces, documents, checkpoints)
         └── Gemini (embeddings, gemini-embedding-001)
 ```
 
@@ -43,7 +43,8 @@ FastAPI Backend Server
 | LLM | claude-sonnet-4-6 | via `langchain-anthropic` |
 | Embeddings | Gemini `gemini-embedding-001` | 3072 dimensions |
 | Vector Store | Pinecone (serverless, cosine) | Replaced FAISS from original spec |
-| Memory | Redis (Docker) + LangGraph checkpointer | `langgraph-checkpoint-redis` |
+| Control Plane | SQLite (`data/finsight.db`) + SQLAlchemy 2.x + Alembic | Users, workspaces, documents, chat_sessions; schema via `alembic upgrade head` |
+| LangGraph Checkpointer | `langgraph-checkpoint-sqlite` | `SqliteSaver` backed by same `data/finsight.db` file; no Docker required |
 | Tool Protocol | MCP via `mcp` Python SDK (FastMCP) | 26 tools |
 | Frontend | React 18 + TypeScript + Vite | No React Router — single App.tsx shell |
 | UI Components | MUI v6 exclusively | No Tailwind, Bootstrap, or raw CSS |
@@ -59,12 +60,12 @@ FastAPI Backend Server
 
 | Phase | Status | Description |
 |-------|--------|-------------|
-| Phase 1 — Foundation | ✅ DONE | FastAPI scaffold, config, Pinecone/Redis/Gemini clients, MCP scaffold |
+| Phase 1 — Foundation | ✅ DONE | FastAPI scaffold, config, Pinecone/Gemini clients, MCP scaffold |
 | Phase 2 — Ingestion & RAG | ✅ DONE | PDF/CSV parsing, hierarchical chunking, embedding, Pinecone upsert/search, MMR |
 | Phase 3 — Financial Modeling | ✅ DONE | DCF, ratio scorecard, forecasting, variance, scenarios, covenants, runway |
-| Phase 4 — Agent Integration | ✅ DONE | LangGraph orchestrator, intent routing, Redis checkpointing, SSE streaming |
+| Phase 4 — Agent Integration | ✅ DONE | LangGraph orchestrator, intent routing, SqliteSaver checkpointing, SSE streaming |
 | Phase 5 — Frontend | ✅ DONE | 3-panel NotebookLM-inspired layout (Sources \| Chat \| Studio), KPI dashboard |
-| Phase 6 — Output & Polish | 🚧 IN PROGRESS | Infra hardening done (SecretStr, `make doctor`, health-gated `make start`, log redirection, backend-unreachable modal); Excel/PDF export + cloud deployment remain |
+| Phase 6 — Output & Polish | 🚧 IN PROGRESS | Infra hardening done (SecretStr, `make doctor`, health-gated `make start`, log redirection, backend-unreachable modal, SQLite control plane + multi-tenant scaffolding, Redis removed); Excel/PDF export + cloud deployment remain |
 
 ---
 
@@ -141,7 +142,7 @@ All UI design decisions trace back to this Figma file. Any deviation between the
 
 | Method | Path | Purpose | Request body |
 |--------|------|---------|---|
-| GET | `/health` | Service health (Redis, Pinecone, API keys) | — |
+| GET | `/health` | Service health (SQLite, Pinecone, API keys) | — |
 | POST | `/chat/` | Chat → full response (non-streaming) | `{"message": "...", "session_id": "..."}` ⚠ field is `message`, not `query` |
 | POST | `/chat/stream` | Chat → SSE stream (token-level) | Same as `/chat/` |
 | POST | `/documents/upload` | Upload + parse + chunk + embed + index | `multipart/form-data` with `file`, `doc_type`, `fiscal_year` |
@@ -173,8 +174,8 @@ Traces a document from the user's click in the upload dialog to a retrievable ve
 | 3 | Parse | `backend/skills/document_ingestion.py` | `parse_pdf` (55–111), `parse_csv` (114–145) | `pdfplumber` per-page text+tables; financial-value normalization (`$`/`,`/`(x)` → `-x`) |
 | 4 | Hierarchical chunk | `backend/skills/document_ingestion.py` | `hierarchical_chunk` (161–258) | 512-token sections + 64-token overlap; 128-token row chunks; metadata: `doc_id, doc_name, doc_type, fiscal_year, page, chunk_type, section, chunk_index` |
 | 5 | Embed | `backend/core/gemini_client.py` | `embed_texts` | **Single batch** call to `gemini-embedding-001`; returns `{"embedding": [[vec], ...]}` (singular key, list-of-lists); 3072-dim |
-| 6 | Upsert | `backend/skills/vector_retrieval.py` | `embed_and_upsert` (41–85) | Batches of 100 to Pinecone; metadata includes chunk `text`; not transactional |
-| 7 | Redis register | `backend/mcp_server/tools/document_tools.py` | `register_document` (104–130) | Single key `finsight:documents` as JSON array; `WATCH`/`MULTI` for atomicity |
+| 6 | Upsert | `backend/skills/vector_retrieval.py` | `embed_and_upsert` (41–85) | Batches of 100 to Pinecone namespace = `workspace_id`; chunk IDs are `<doc_id>:<NNNN>`; wrapped in `StorageTransaction` with compensating actions |
+| 7 | SQLite register | `backend/db/models.py` + `backend/api/routes/documents.py` | `Document` ORM row | Writes document record to `data/finsight.db` via SQLAlchemy; atomically paired with Pinecone upsert inside `StorageTransaction` |
 | 8 | Response + refetch | — | — | 200 returned → frontend `fetchDocuments()` → left panel repopulates |
 | 9 | RAG read path | `backend/agents/orchestrator.py` | `rag_retrieve` (116–141) | Query embed → `semantic_search(top_k=8)` → `mmr_rerank(top_k=5)` → `format_retrieved_context` → Claude |
 
@@ -237,11 +238,15 @@ finsight-cfo/
 │   ├── agents/          # LangGraph orchestrator + graph_state.py + base_agent.py
 │   ├── api/routes/      # FastAPI endpoints (incl. health.py)
 │   ├── core/            # config.py (SecretStr + env-shadow strip), gemini_client.py,
-│   │                    #   pinecone_store.py, redis_client.py
+│   │                    #   pinecone_store.py, context.py (RequestContext),
+│   │                    #   transactions.py (StorageTransaction)
+│   ├── db/              # engine.py (SQLAlchemy + WAL), models.py (ORM),
+│   │                    #   __init__.py, migrations/ (Alembic versions)
 │   ├── skills/          # document_ingestion, vector_retrieval, financial_modeling,
 │   │                    #   scenario_analysis
 │   ├── mcp_server/      # financial_mcp_server.py + tools/
-│   ├── tests/           # 229 unit + 23 integration tests
+│   ├── scripts/         # migrate_to_workspace_schema.py, stats.py (SQLite-backed)
+│   ├── tests/           # 242 unit tests
 │   ├── .env             # Secrets (never committed — *.env is gitignored)
 │   ├── .env.example     # Template with placeholder values
 │   └── requirements.txt
@@ -259,9 +264,13 @@ finsight-cfo/
 │       ├── types/       # index.ts
 │       ├── App.tsx      # 3-panel shell + <BackendUnreachableModal /> at root
 │       └── main.tsx     # React entry point
-├── data/uploads/        # Uploaded documents (gitignored)
+├── data/
+│   ├── finsight.db      # SQLite control plane (gitignored)
+│   └── uploads/         # {workspace_id}/{doc_id}.{ext} (gitignored);
+│                        #   _pre_migration/ holds archived pre-refactor files
+├── alembic.ini          # Alembic migration config
 ├── logs/                # backend.log + frontend.log (gitignored via *.log)
-├── Makefile             # start / stop / status / doctor / install targets
+├── Makefile             # start / stop / status / doctor / stats / install targets
 ├── CLAUDE.md            # This file — project source of truth
 └── README.md
 ```
@@ -276,7 +285,8 @@ finsight-cfo/
 - Skills hold business logic — routes and MCP tools are thin wrappers
 - No bare `except` — always catch specific exceptions
 - `asyncio.to_thread()` for blocking calls in async handlers
-- Redis pipelines for atomic read-modify-write ops
+- `StorageTransaction` for atomic writes spanning SQLite + Pinecone + disk; include compensating actions
+- SQLAlchemy sessions via `get_db()` dependency — never raw SQL
 - Test naming: `test_<what>_<condition>`
 
 ### Frontend (TypeScript/React)
@@ -297,21 +307,20 @@ finsight-cfo/
 
 **Daily path (recommended):**
 ```bash
-make start     # Redis + backend (health-gated) + frontend, logs captured to logs/
-make doctor    # diagnose any issue — Redis, port 8000, /health, port 5173, .env keys
+make start     # backend (health-gated) + frontend, logs captured to logs/
+make doctor    # diagnose any issue — SQLite db, port 8000, /health, port 5173, .env keys
 make status    # quick one-shot snapshot
-make stop      # terminate all three services
+make stop      # terminate both services
+make stats     # cross-reference Pinecone namespace counts vs. SQLite chunk_count sums
 ```
 
-`make start` polls `GET /health` for up to 15 s before declaring the backend ready; if it fails to come up it tails the last 20 lines of `logs/backend.log` and exits non-zero. The old blind `sleep 2` is gone. Follow live logs with `tail -f logs/backend.log` / `tail -f logs/frontend.log`.
+`make start` polls `GET /health` for up to 15 s before declaring the backend ready; if it fails to come up it tails the last 20 lines of `logs/backend.log` and exits non-zero. The old blind `sleep 2` is gone. Docker is not required. Follow live logs with `tail -f logs/backend.log` / `tail -f logs/frontend.log`.
 
 **Manual path (if `make` isn't available):**
 ```bash
-# Redis (docker must map the host port — see Operational Gotchas)
-docker run -d --name redis-finsight -p 6379:6379 redis:alpine
-
 # Backend
 conda activate finsight
+alembic upgrade head              # creates data/finsight.db on first run
 PYTHONPATH=. uvicorn backend.api.main:app --reload --port 8000
 
 # Frontend
@@ -320,8 +329,8 @@ cd frontend && npm run dev   # localhost:5173
 
 **Tests:**
 ```bash
-conda run -n finsight pytest backend/tests/ -v -k "not integration"   # unit (229)
-conda run -n finsight pytest backend/tests/ -v -m integration          # integration (23)
+conda run -n finsight pytest backend/tests/ -v -k "not integration"   # unit (242)
+conda run -n finsight pytest backend/tests/ -v -m integration          # integration tests
 ```
 
 ---
@@ -342,6 +351,10 @@ conda run -n finsight pytest backend/tests/ -v -m integration          # integra
 | 2026-04-19 | `fix(config)` `608d58f` — SecretStr for all API keys + `_strip_empty_shadow_env()` | A pytest assertion failure dumped plaintext keys into stdout; systemic fix via SecretStr prevents recurrence. Env-shadow strip fixes Claude Code subshells that export empty sensitive vars |
 | 2026-04-19 | `feat(make)` `b5c5eb8` — `make doctor`, health-gated `make start`, log redirection | Old `sleep 2` silently declared success even when backend crashed; new target polls `/health` for 15 s and exits non-zero on failure. `conda run --no-capture-output` gives live log streaming |
 | 2026-04-19 | `feat(frontend)` `dd09e20` — `BackendUnreachableModal` matching Figma Variant D | Users previously saw a generic "Upload failed" toast with no context; modal surfaces the real issue and offers a Retry button that probes `/health` |
+| 2026-04-20 | PR #1 — orphan cleanup script (`cleanup_orphans.py`) | One-shot migration that deleted dangling Pinecone vectors with no matching SQLite document row; script then removed — no longer runnable or needed |
+| 2026-04-20 | PR #2 — SQLite foundation (SQLAlchemy 2.x + Alembic) | Replaced Redis as the document registry; `data/finsight.db` holds users, workspaces, workspace_members, documents, chat_sessions; `alembic upgrade head` bootstraps the schema |
+| 2026-04-20 | PR #3 — multi-tenant storage refactor (`StorageTransaction`, `RequestContext`, namespace-per-workspace) | Pinecone default namespace retired; each workspace gets `namespace = workspace_id` (`wks_default` in v1). `StorageTransaction` makes SQLite + Pinecone + disk writes atomic with compensating actions. `RequestContext(user_id, workspace_id)` threaded through every route via FastAPI dependency. File layout reorganized to `data/uploads/{workspace_id}/{doc_id}.{ext}` |
+| 2026-04-20 | PR #4 — Redis removed; `SqliteSaver` adopted; `mcp_memory_write/read` deleted | No Docker required for local dev. `langgraph-checkpoint-sqlite` replaces `langgraph-checkpoint-redis`. Redundant MCP memory tools removed — LangGraph state is single source of truth for messages. `make start/stop/doctor/status` no longer mention Redis |
 
 ## Known TODOs (Phase 6)
 
@@ -354,13 +367,16 @@ conda run -n finsight pytest backend/tests/ -v -m integration          # integra
 - `dashboardStore.ts` — populate `change` and `favorable` from prior-period comparison query
 - Add `aria-label` to icon-only buttons (collapsed panel rails)
 
-**Infra hardening — ✅ DONE 2026-04-19:**
+**Infra hardening — ✅ DONE 2026-04-19 → 2026-04-20:**
 - ~~SecretStr masking of all API keys~~
 - ~~Empty-env-shadow filter in `get_settings()`~~
 - ~~`make doctor` diagnostic target~~
 - ~~Health-gated `make start` (replace blind `sleep 2`)~~
 - ~~Log redirection to `logs/backend.log` + `logs/frontend.log`~~
 - ~~Backend-unreachable modal dialog in frontend~~
+- ~~SQLite control plane (SQLAlchemy + Alembic) replacing Redis document registry~~
+- ~~Multi-tenant scaffolding (RequestContext, StorageTransaction, namespace-per-workspace)~~
+- ~~Redis removed; Docker no longer required for local dev~~
 
 ---
 
@@ -373,10 +389,16 @@ Durable knowledge harvested from a real debug-and-harden cycle. These are the th
 - **Claude Code subshells export `ANTHROPIC_API_KEY=""`** (empty string) as a security measure. With the default pydantic-settings precedence (OS env > `.env`), this empty value silently shadows the real key and the backend fails to start with `AssertionError: ANTHROPIC_API_KEY is not set in .env`. Handled by `_strip_empty_shadow_env()` in `backend/core/config.py` which removes empty sensitive vars from `os.environ` before `Settings()` construction. Same protection now applies if any other parent process does the same thing.
 - **`pydantic.SecretStr` is mandatory for every API-key field.** A plain `str` field will appear in clear text inside `repr(Settings)`, which pytest dumps on any assertion failure. Real-world consequence: seven keys leaked into a session transcript in the 2026-04-19 incident. SecretStr makes this class of leak impossible — `.get_secret_value()` is required only at the point of SDK construction.
 
-### Redis in docker
+### SQLite control plane
 
-- **The container must expose port 6379 to the host** via `-p 6379:6379` at `docker run` time. `docker start <existing-container>` cannot add a port mapping retroactively — if the container was created without `-p`, you must `docker rm` and `docker run` again. A container with `Ports: 6379/tcp` (no `->`) in `docker ps` output is a silent failure mode: `/health` returns `redis:false` while the container looks "Up". Symptoms: chat responses fail, `fetchDocuments()` returns nothing, but no obvious error.
-- **Redis takes ~1–2 s to accept connections after `docker start`.** During this window, the backend's lifespan handler logs `WARNING: Redis is not reachable` but still boots. Subsequent requests succeed. Don't mistake a transient cold-start warning for a real outage.
+- **`data/finsight.db` is the single file** holding users, workspaces, workspace_members, documents, chat_sessions, and LangGraph checkpoints. WAL mode + foreign-key pragmas are enabled by the engine at startup.
+- **Schema is managed by Alembic.** First-time setup: `alembic upgrade head`. To inspect the current migration state: `alembic current`. To reset entirely: `rm data/finsight.db && alembic upgrade head`.
+- **Backups are a file copy.** `cp data/finsight.db backup.db` is sufficient; SQLite supports hot copies in WAL mode.
+- **Not safe for multiple concurrent writers.** Fine for a single backend instance on localhost. When moving to cloud, migrate to Postgres (SQLAlchemy connection string swap + new Alembic migrations).
+- **Docker is no longer required for local dev.** No container management, port mapping, or docker run needed.
+- **After deleting `finsight.db`** (e.g., `make install` or manual reset), Pinecone vectors in `wks_default` namespace survive but the SQLite documents table is empty, so the Sources panel will show nothing. Re-upload documents or restore from backup to reconcile.
+
+*Historical note (pre-2026-04-20):* Redis was used as the document registry (`finsight:documents` JSON array, `WATCH`/`MULTI` for atomicity) and for LangGraph checkpointing (`langgraph-checkpoint-redis`). Both are now replaced by SQLite. The Redis gotchas below in the decision log are kept for historical context only — Redis is no longer in the stack.
 
 ### Gemini embeddings (`google-generativeai` 0.8.3)
 
@@ -396,14 +418,14 @@ Durable knowledge harvested from a real debug-and-harden cycle. These are the th
 
 ### Debugging discipline
 
-- **`make doctor` first, always.** It surfaces the five most common failure modes in < 2 seconds (Redis, port 8000, `/health`, port 5173, `.env` keys). Trying to diagnose without it wastes 20 minutes clicking around.
+- **`make doctor` first, always.** It surfaces the most common failure modes in < 2 seconds (SQLite db exists, port 8000, `/health`, port 5173, `.env` keys). Trying to diagnose without it wastes 20 minutes clicking around.
 - **When a 500 comes back from `/documents/upload`, the stack trace lives in `logs/backend.log`.** The JSON error body is useless; the traceback is not.
 - **Never share, screenshot, or paste `.env` contents or any `print(settings)` / `repr(settings)` output.** SecretStr now protects the latter, but discipline matters. Any Settings-like dict must explicitly `.get_secret_value()` the field — or better, leave the masked value in place.
 
 ### Deferred / known-unknowns
 
 - **Chat responses occasionally report "N uncited claims"** from `mcp_citation_validator`. The main numbers are cited but detail-rows in markdown tables aren't individually tagged. Prompt-engineering fix, not a pipeline bug.
-- **Redis container state is ephemeral across container recreation.** Pinecone vectors survive but the `finsight:documents` registry does not, so after a `docker rm` + `docker run` cycle, the Sources panel will be empty even if the underlying vectors are queryable. Re-upload the document to restore the registry entry.
+- **Legacy Pinecone vectors** (uploaded pre-refactor) use random UUID chunk IDs rather than the new `<doc_id>:<NNNN>` format. Both formats coexist and are queryable; no reindex required unless you need deterministic IDs throughout.
 
 ---
 
@@ -426,12 +448,14 @@ lsof -iTCP:8000 -sTCP:LISTEN                                # what owns 8000?
 pkill -f 'uvicorn backend.api.main:app'                     # stop backend
 pkill -f vite                                               # stop frontend
 
-# ── Redis (docker) ──────────────────────────────────────────────────────────
-docker ps --filter name=redis-finsight --format 'Ports: {{.Ports}}'   # MUST show 0.0.0.0:6379->6379/tcp
-docker exec redis-finsight redis-cli PING                   # expect: PONG
-# If port mapping is missing (no ->), rebuild cleanly:
-docker stop redis-finsight && docker rm redis-finsight && \
-  docker run -d --name redis-finsight -p 6379:6379 redis:alpine
+# ── SQLite (control plane) ───────────────────────────────────────────────────
+sqlite3 data/finsight.db '.schema'                          # inspect full schema
+sqlite3 data/finsight.db 'SELECT * FROM workspaces;'        # quick workspace query
+sqlite3 data/finsight.db 'SELECT id, name, chunk_count FROM documents;'
+alembic upgrade head                                        # apply pending migrations
+alembic current                                             # show current migration head
+cp data/finsight.db backup.db                               # manual backup
+make stats                                                  # Pinecone + SQLite cross-check
 
 # ── Smoke tests via curl ────────────────────────────────────────────────────
 # Upload a document (useful when the UI is broken)
@@ -446,8 +470,8 @@ curl -s -X POST http://localhost:8000/chat/ \
   | python3 -m json.tool
 
 # ── Tests ───────────────────────────────────────────────────────────────────
-conda run -n finsight pytest backend/tests/ -v -k "not integration"   # 229 unit
-conda run -n finsight pytest backend/tests/ -v -m integration          # 23 integration
+conda run -n finsight pytest backend/tests/ -v -k "not integration"   # 242 unit
+conda run -n finsight pytest backend/tests/ -v -m integration          # integration tests
 
 # ── Start backend directly (bypass make when debugging the Makefile itself) ─
 PYTHONPATH=. /Users/aarvingeorge/miniconda3/envs/finsight/bin/uvicorn \

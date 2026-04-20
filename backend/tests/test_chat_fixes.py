@@ -90,7 +90,6 @@ async def test_chat_sync_endpoint_still_works():
     mock_graph.invoke = _mock_graph_invoke
     with patch("backend.api.routes.chat.build_graph", return_value=mock_graph), \
          patch("backend.api.routes.chat.get_checkpointer"), \
-         patch("backend.api.routes.chat.mcp_memory_write"), \
          patch("backend.api.routes.chat.mcp_intent_log"), \
          patch("backend.api.routes.chat.mcp_response_logger"):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
