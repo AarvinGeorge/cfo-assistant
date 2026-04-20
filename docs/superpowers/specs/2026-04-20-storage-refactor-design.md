@@ -96,7 +96,7 @@ A workspace is a fully isolated context: its documents, chats, and Pinecone vect
 **Namespace:** literally the `workspace_id` string (e.g. `wks_acme`)
 **Vector ID:** `doc_<uuid8>:<chunk_index>` — deterministic from doc_id + chunk index (replaces current random UUIDs)
 
-**Metadata (per vector):**
+**Metadata (per vector) — base fields present on every chunk:**
 ```json
 {
   "user_id":      "usr_default",        // v1: hardcoded; v2: real user
@@ -106,13 +106,18 @@ A workspace is a fully isolated context: its documents, chats, and Pinecone vect
   "doc_type":     "10-K",
   "fiscal_year":  "2025",
   "page":          12,
-  "chunk_type":   "section",            // "section" | "row" | "table"
+  "chunk_type":   "section",            // "section" | "row"
   "section":      "MD&A",
-  "chunk_index":   0,
   "text":         "<chunk text>",
   "token_count":   498
 }
 ```
+
+**Plus one positional field, mutually exclusive based on `chunk_type`:**
+- `chunk_type="section"` → `chunk_index: int` (position in the page's section sequence)
+- `chunk_type="row"` → `table_row: int` (position in the originating table)
+
+This matches the existing `hierarchical_chunk()` schema and is preserved through migration.
 
 `user_id` and `workspace_id` are **required** on every upsert (defensive metadata even though namespace already partitions). They are NOT used as query filters — namespace handles that.
 
@@ -196,9 +201,14 @@ Typed prefixes for grep-friendliness and copy-paste safety:
 | Workspace | `wks_<8 hex chars>` | `wks_a7b2c8d9` |
 | Document | `doc_<8 hex chars>` | `doc_a7b2c8d9` |
 | Chat session | `ses_<8 hex chars>` | `ses_a7b2c8d9` |
-| Pinecone vector | `<doc_id>:<chunk_index>` | `doc_a7b2c8d9:0042` |
+| Pinecone vector (new uploads) | `<doc_id>:<position>` | `doc_a7b2c8d9:0042` |
+| Pinecone vector (legacy migrated data) | `<random uuid>` (preserved as-is) | `005a0166-baa1-...` |
 
-Generated via `f"{prefix}_{uuid.uuid4().hex[:8]}"`.
+`<position>` is `chunk_index` for section chunks and `table_row` for row chunks — the chunker decides which is set.
+
+ID prefixes generated via `f"{prefix}_{uuid.uuid4().hex[:8]}"`.
+
+**Why two formats coexist:** the 1,220 vectors that survive the migration (Section 6) keep their existing random UUIDs — re-IDing them would require fields that aren't reliably present on legacy data and adds risk for zero benefit (Pinecone treats IDs as opaque strings). All NEW upserts use the deterministic format.
 
 ---
 
@@ -365,15 +375,13 @@ Move 1,220 surviving vectors from `namespace=default` → `namespace=wks_default
 
 ```
 1. fetch all vectors from namespace=default (vectors + metadata)
-2. enrich metadata with user_id + workspace_id
-3. regenerate vector IDs from random UUIDs to deterministic format:
-     new_id = f"{metadata.doc_id}:{int(metadata.chunk_index):04d}"
-4. upsert into namespace=wks_default in batches of 100 (with new IDs)
-5. verify namespace=wks_default count == 1220
-6. ONLY THEN delete the old namespace=default
+2. enrich metadata with user_id="usr_default" + workspace_id="wks_default"
+3. upsert into namespace=wks_default in batches of 100 — preserve existing vector IDs
+4. verify namespace=wks_default count == 1220
+5. ONLY THEN delete the old namespace=default
 ```
 
-The ID regeneration aligns existing vectors with the new convention (§4.5). `chunk_index` is already present in current metadata so reconstruction is deterministic.
+Vector IDs are preserved as-is during migration (random UUIDs from the legacy chunker stay intact). All vectors created AFTER the refactor lands use the new deterministic ID format from §4.5. Verified during spec review: most existing vectors have `chunk_index=None` (only `chunk_type=section` chunks set it; row chunks set `table_row` instead), so reconstructing deterministic IDs for legacy data isn't reliably possible. Pinecone treats IDs as opaque strings — the mixed format is functionally inert.
 
 Cost: ~$0.50 in Pinecone API calls. No Gemini re-embedding (vectors reused).
 
@@ -482,7 +490,7 @@ Each downstream PR gated on the previous one passing CI and user review.
 | | |
 |---|---|
 | **Goal** | Introduce SQLite + new schema **alongside** existing Redis-based code |
-| **Touches** | New: `backend/core/db.py`, `backend/db/schema.py`, `backend/db/migrations/`, `data/finsight.db` (gitignored), `requirements.txt` (+SQLAlchemy, +alembic, +langgraph-checkpoint-sqlite), tests |
+| **Touches** | New: `backend/db/__init__.py`, `backend/db/engine.py` (SQLAlchemy engine + session), `backend/db/models.py` (ORM models), `backend/db/migrations/` (Alembic: `env.py`, `script.py.mako`, `versions/`), `data/finsight.db` (gitignored), `requirements.txt` (+SQLAlchemy, +alembic, +langgraph-checkpoint-sqlite), tests covering schema, engine, transactions |
 | **Size** | ~400 lines + tests |
 | **Risk** | Very low — purely additive |
 | **Verify** | `alembic upgrade head` succeeds; new tests pass; old tests still pass; `make start` boots normally |
@@ -504,8 +512,9 @@ Each downstream PR gated on the previous one passing CI and user review.
 | | |
 |---|---|
 | **Goal** | Remove Redis from the stack entirely |
-| **Touches** | Removed: `backend/core/redis_client.py` and all imports; `redis` and `langgraph-checkpoint-redis` from requirements; Redis from `Makefile` and `make doctor`. Modified: orchestrator switches `RedisSaver` → `SqliteSaver`; `CLAUDE.md` and `README.md` updated |
-| **Size** | ~150 lines, mostly deletions |
+| **Touches** | **Deleted:** `backend/core/redis_client.py`; `backend/tests/test_redis_client.py`. **Removed from `requirements.txt`:** `redis`, `langgraph-checkpoint-redis`. **Removed from `Makefile`:** all `redis-finsight` Docker container management in `start`/`stop`/`doctor`. **Modified — Redis import / call sites:** `backend/api/main.py` (drop startup ping); `backend/api/routes/health.py` (drop Redis from `/health` payload); `backend/api/routes/chat.py` (remove the 4 `mcp_memory_write` calls at lines 96, 97, 180, 181 — redundant with LangGraph state); `backend/mcp_server/tools/memory_tools.py` (remove `mcp_memory_read` and `mcp_memory_write` — Redis-backed; keep `mcp_intent_log`, `mcp_response_logger`, `mcp_citation_validator`, `mcp_export_trigger` which are file-only); `backend/mcp_server/financial_mcp_server.py` (deregister `mcp_memory_read` / `mcp_memory_write` MCP tool exposure); `backend/tests/test_memory_tools.py` (drop tests for deleted memory_read/write); `backend/tests/test_chat_fixes.py` and `backend/tests/test_chat_api.py` (remove `mcp_memory_write` mock patches). **Modified — orchestrator:** swap `RedisSaver` → `SqliteSaver` (langgraph). **Modified — docs:** `CLAUDE.md` (Architecture, Operational Gotchas, Cheatsheet) and `README.md` (architecture diagram, setup, troubleshooting). |
+| **Architectural cleanup** | The current app stores conversation messages in **two** redundant places: LangGraph's RedisSaver checkpoints AND the manual `mcp_memory_write` calls writing to `finsight:session:{session_id}:messages` keys with 24h TTL. With `SqliteSaver` as the single checkpointer, LangGraph state becomes the single source of truth for messages — the manual MCP memory-write path is removed. The `mcp_memory_read`/`write` MCP tool exposure is also removed (no caller in the orchestrator). |
+| **Size** | ~250 lines, mostly deletions across 10 files |
 | **Risk** | Low if PR #3 verified solid |
 | **Verify** | `make doctor` passes without Redis; chat sessions persist across `make stop && make start`; integration tests pass |
 | **Rollback** | Revert; Redis comes back |
