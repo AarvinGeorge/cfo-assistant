@@ -11,8 +11,9 @@ Role in project:
 
 Main parts:
     - AgentState: TypedDict with fields for the conversation thread
-      (session_id, messages), routing (intent, requires_retrieval),
-      retrieval results (retrieved_chunks, context_string), model outputs
+      (session_id, messages), multi-tenant context (user_id, workspace_id,
+      chat_session_id), routing (intent, requires_retrieval), retrieval
+      results (retrieved_chunks, context_string), model outputs
       (model_result, scenario_result), and the final response (response,
       citations, stream_tokens).
 """
@@ -44,6 +45,11 @@ class AgentState(TypedDict):
 
     # Session metadata
     session_id: str
+
+    # Multi-tenant context (v1: hardcoded defaults; v2: from auth + workspace switcher)
+    user_id: str           # who is asking (v1: "usr_default")
+    workspace_id: str      # which workspace's Pinecone namespace to query (v1: "wks_default")
+    chat_session_id: str   # the LangGraph thread_id = chat's SQLite session id
 
     # Audit
     citations: list  # Extracted citations from response

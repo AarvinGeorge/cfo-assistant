@@ -53,6 +53,9 @@ def test_agent_state_has_expected_keys():
         "model_output",
         "response",
         "session_id",
+        "user_id",
+        "workspace_id",
+        "chat_session_id",
         "citations",
     }
     assert expected_keys == set(hints.keys())
