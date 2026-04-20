@@ -24,7 +24,6 @@ Main parts:
       chunks the output, and returns a list of Chunk objects.
 """
 
-import uuid
 import re
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, field, asdict
@@ -181,6 +180,13 @@ def hierarchical_chunk(
     """
     settings = get_settings()
     chunks = []
+    chunk_counter = 0  # running counter across all chunk_types → unique IDs per doc
+
+    def _next_id() -> str:
+        nonlocal chunk_counter
+        cid = f"{doc_metadata['doc_id']}:{chunk_counter:04d}"
+        chunk_counter += 1
+        return cid
 
     if "pages" in parsed_doc:
         # PDF document — process pages
@@ -196,7 +202,7 @@ def hierarchical_chunk(
                 )
                 for i, text in enumerate(section_chunks):
                     chunks.append(Chunk(
-                        chunk_id=str(uuid.uuid4()),
+                        chunk_id=_next_id(),
                         text=text,
                         token_count=count_tokens(text),
                         metadata={
@@ -220,7 +226,7 @@ def hierarchical_chunk(
                     if not row_text.strip():
                         continue
                     chunks.append(Chunk(
-                        chunk_id=str(uuid.uuid4()),
+                        chunk_id=_next_id(),
                         text=row_text,
                         token_count=count_tokens(row_text),
                         metadata={
@@ -243,7 +249,7 @@ def hierarchical_chunk(
             if not row_text.strip():
                 continue
             chunks.append(Chunk(
-                chunk_id=str(uuid.uuid4()),
+                chunk_id=_next_id(),
                 text=row_text,
                 token_count=count_tokens(row_text),
                 metadata={

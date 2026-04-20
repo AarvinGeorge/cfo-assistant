@@ -16,8 +16,9 @@ Main parts:
     - classify_intent node: uses Claude to classify the query into one of 7
       intent categories (document_qa, financial_model, scenario_analysis,
       general_chat, etc.).
-    - rag_retrieve node: embeds the query via Gemini, searches Pinecone,
-      and applies MMR reranking to return the top-5 most relevant chunks.
+    - rag_retrieve node: embeds the query via Gemini, searches Pinecone
+      within the state's workspace_id namespace, and applies MMR reranking
+      to return the top-5 most relevant chunks.
     - financial_model_node: extracts parameters from context and runs the
       appropriate financial model (DCF, ratios, forecast, or variance).
     - scenario_analysis_node: runs bull/base/bear scenarios, sensitivity
@@ -118,7 +119,11 @@ def rag_retrieve(state: AgentState) -> dict:
     query = state["current_query"]
 
     try:
-        candidates = semantic_search(query, top_k=8)
+        candidates = semantic_search(
+            query,
+            top_k=8,
+            namespace=state["workspace_id"],
+        )
         reranked = mmr_rerank(query, candidates, top_k=5)
 
         chunks_as_dicts = [

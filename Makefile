@@ -1,4 +1,4 @@
-.PHONY: start stop status doctor stats cleanup-orphans install
+.PHONY: start stop status doctor stats cleanup-orphans migrate-to-workspace-schema install
 
 # Pin to the finsight env's binaries directly. `conda run -n finsight` is
 # unreliable when a system-Python uvicorn exists earlier on PATH — it will
@@ -126,6 +126,12 @@ stats:
 # ── cleanup-orphans: remove Pinecone vectors with no Redis registry entry ────
 cleanup-orphans:
 	@cd $(CURDIR) && PYTHONPATH=. $(FINSIGHT_BIN)/python backend/scripts/cleanup_orphans.py $(if $(APPLY),--apply,)
+
+# ── migrate-to-workspace-schema: port single-tenant data into multi-tenant schema ──
+migrate-to-workspace-schema:
+	@cd $(CURDIR) && PYTHONPATH=. $(FINSIGHT_BIN)/python backend/scripts/migrate_to_workspace_schema.py \
+	    $(if $(APPLY),--apply,) \
+	    --surviving-file "$(SURVIVING_FILE)"
 
 # ── install: first-time setup ────────────────────────────────────────────────
 install:

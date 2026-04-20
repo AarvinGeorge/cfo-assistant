@@ -129,3 +129,58 @@ class TestDocumentTracking:
         with patch("backend.mcp_server.tools.document_tools.get_redis_client", return_value=mock_redis):
             result = delete_document("xyz")
             assert result is False
+
+
+# ── list_documents_sql (new SQL-backed replacement for mcp_list_documents) ───
+
+
+def test_list_documents_sql_returns_workspace_docs_only():
+    """SQL-backed list filters to one workspace; doesn't leak across workspaces."""
+    from backend.db.engine import create_engine_for_url, make_session_factory
+    from backend.db.models import Base, User, Workspace, Document
+    from backend.mcp_server.tools.document_tools import list_documents_sql
+
+    engine = create_engine_for_url("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    SessionLocal = make_session_factory(engine)
+    with SessionLocal() as s:
+        s.add_all([
+            User(id="usr_a", email="a@x.com", display_name="A"),
+            Workspace(id="wks_a", owner_id="usr_a", name="A"),
+            Workspace(id="wks_b", owner_id="usr_a", name="B"),
+            Document(id="doc_1", workspace_id="wks_a", user_id="usr_a",
+                     name="A.pdf", chunk_count=10, status="indexed"),
+            Document(id="doc_2", workspace_id="wks_b", user_id="usr_a",
+                     name="B.pdf", chunk_count=20, status="indexed"),
+        ])
+        s.commit()
+        result = list_documents_sql("wks_a", s)
+
+    assert len(result) == 1
+    assert result[0]["doc_id"] == "doc_1"
+    assert result[0]["chunk_count"] == 10
+
+
+def test_list_documents_sql_hides_non_indexed_status():
+    """Documents with status != 'indexed' should be excluded."""
+    from backend.db.engine import create_engine_for_url, make_session_factory
+    from backend.db.models import Base, User, Workspace, Document
+    from backend.mcp_server.tools.document_tools import list_documents_sql
+
+    engine = create_engine_for_url("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    SessionLocal = make_session_factory(engine)
+    with SessionLocal() as s:
+        s.add_all([
+            User(id="usr_a", email=None, display_name="A"),
+            Workspace(id="wks_a", owner_id="usr_a", name="A"),
+            Document(id="doc_ok", workspace_id="wks_a", user_id="usr_a",
+                     name="ok.pdf", chunk_count=5, status="indexed"),
+            Document(id="doc_fail", workspace_id="wks_a", user_id="usr_a",
+                     name="fail.pdf", chunk_count=0, status="failed"),
+        ])
+        s.commit()
+        result = list_documents_sql("wks_a", s)
+
+    assert len(result) == 1
+    assert result[0]["doc_id"] == "doc_ok"
