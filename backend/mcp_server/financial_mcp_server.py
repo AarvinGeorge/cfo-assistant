@@ -37,7 +37,7 @@ from backend.mcp_server.tools.output_tools import (
     mcp_render_excel, mcp_render_pdf, mcp_render_chart, mcp_file_serve,
 )
 from backend.mcp_server.tools.memory_tools import (
-    mcp_memory_read, mcp_memory_write, mcp_intent_log,
+    mcp_intent_log,
     mcp_citation_validator, mcp_response_logger, mcp_export_trigger,
 )
 
@@ -71,9 +71,7 @@ mcp.tool()(mcp_render_pdf)
 mcp.tool()(mcp_render_chart)
 mcp.tool()(mcp_file_serve)
 
-# ── Memory & audit tools ──────────────────────────────────────────────────────
-mcp.tool()(mcp_memory_read)
-mcp.tool()(mcp_memory_write)
+# ── Audit + validation tools (memory is LangGraph SqliteSaver's job) ──────────
 mcp.tool()(mcp_intent_log)
 mcp.tool()(mcp_citation_validator)
 mcp.tool()(mcp_response_logger)

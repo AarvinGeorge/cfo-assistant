@@ -8,8 +8,6 @@ Role in project:
     pytest tests/test_memory_tools.py -v
 
 Coverage:
-    - mcp_memory_write stores a message in Redis with an expiry via rpush and expire
-    - mcp_memory_read returns an empty list for a new session and deserialises stored messages correctly
     - mcp_intent_log appends a JSON entry of type "intent_classification" to audit_log.jsonl
     - mcp_citation_validator detects cited and uncited numerical claims in response text
     - mcp_response_logger appends a JSON entry of type "qa_response" including citation_count
@@ -21,37 +19,9 @@ import pytest
 from unittest.mock import patch, MagicMock, call
 from pathlib import Path
 from backend.mcp_server.tools.memory_tools import (
-    mcp_memory_read, mcp_memory_write, mcp_intent_log,
+    mcp_intent_log,
     mcp_citation_validator, mcp_response_logger, mcp_export_trigger,
 )
-
-
-class TestMemoryReadWrite:
-    def test_memory_write(self):
-        mock_redis = MagicMock()
-        with patch("backend.mcp_server.tools.memory_tools.get_redis_client", return_value=mock_redis):
-            result = mcp_memory_write("session-1", {"role": "user", "content": "hello"})
-        assert result is True
-        mock_redis.rpush.assert_called_once()
-        mock_redis.expire.assert_called_once()
-
-    def test_memory_read_empty(self):
-        mock_redis = MagicMock()
-        mock_redis.lrange.return_value = []
-        with patch("backend.mcp_server.tools.memory_tools.get_redis_client", return_value=mock_redis):
-            result = mcp_memory_read("session-1")
-        assert result == []
-
-    def test_memory_read_with_messages(self):
-        mock_redis = MagicMock()
-        mock_redis.lrange.return_value = [
-            json.dumps({"role": "user", "content": "hello"}),
-            json.dumps({"role": "assistant", "content": "hi"}),
-        ]
-        with patch("backend.mcp_server.tools.memory_tools.get_redis_client", return_value=mock_redis):
-            result = mcp_memory_read("session-1")
-        assert len(result) == 2
-        assert result[0]["role"] == "user"
 
 
 class TestIntentLog:
