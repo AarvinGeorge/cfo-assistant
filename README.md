@@ -1,119 +1,139 @@
 # FinSight CFO Assistant
 
-A RAG-powered multi-agent financial intelligence web application designed for Chief Financial Officers. Ingests financial documents (10-K/10-Q filings, income statements, balance sheets, cash flow statements, board reports, budgets), builds a semantic vector index, and deploys specialized AI agents to answer natural-language questions, generate financial models, run scenario analyses, and produce boardroom-ready outputs.
+A locally-deployed, RAG-powered financial intelligence assistant for CFOs. Ingests financial documents (10-K/10-Q filings, income statements, balance sheets, cash flow statements, board reports, budgets), builds a semantic vector index, and deploys specialized AI agents to answer natural-language questions, generate financial models, run scenario analyses, and produce boardroom-ready outputs — with every number citation-traced to the source chunk.
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│           React + TypeScript Frontend (MUI v6)          │
-│  Dashboard │ Chat/Q&A │ Model Studio │ Document Manager │
-└──────────────────────────┬──────────────────────────────┘
-                           │ REST API + SSE
-┌──────────────────────────▼──────────────────────────────┐
-│                  FastAPI Backend Server                  │
-│                                                         │
-│  ┌───────────────────────────────────────────────────┐  │
-│  │              Orchestrator Agent                    │  │
-│  │    (Intent classification, routing, memory)        │  │
-│  └──────┬──────────┬──────────┬──────────────────────┘  │
-│         │          │          │                          │
-│   ┌─────▼──┐ ┌─────▼───┐ ┌───▼──────┐ ┌────────────┐  │
-│   │  RAG   │ │Financial│ │Scenario  │ │  Output    │  │
-│   │ Agent  │ │Modeling │ │Analysis  │ │Generation  │  │
-│   │        │ │ Agent   │ │ Agent    │ │  Agent     │  │
-│   └────────┘ └─────────┘ └──────────┘ └────────────┘  │
-│                                                         │
-│  ┌───────────────────────────────────────────────────┐  │
-│  │        Custom MCP Server (26 financial tools)     │  │
-│  └───────────────────────────────────────────────────┘  │
-│                                                         │
-│  ┌──────────────┐ ┌───────────┐ ┌───────────────────┐  │
-│  │   Pinecone   │ │   Redis   │ │   File Storage    │  │
-│  │ (Embeddings) │ │ (Memory)  │ │ (Uploads/Output)  │  │
-│  └──────────────┘ └───────────┘ └───────────────────┘  │
-└─────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│  React 18 + TypeScript + MUI v6 — 3-panel shell (no routing)    │
+│     Sources (Left)  │  Chat (Center)  │  Studio/KPIs (Right)    │
+│     BackendUnreachableModal at root (flips on ERR_NETWORK)      │
+└───────────────────────────────┬─────────────────────────────────┘
+                        REST + SSE
+┌───────────────────────────────▼─────────────────────────────────┐
+│                  FastAPI Backend (Python 3.13)                   │
+│                                                                  │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │   LangGraph Orchestrator — 7-node StateGraph               │ │
+│  │                                                            │ │
+│  │   classify_intent → route_by_intent                        │ │
+│  │      ├─ rag_retrieve (Gemini embed → Pinecone → MMR)       │ │
+│  │      ├─ financial_model  (DCF, ratios, forecast, variance) │ │
+│  │      ├─ scenario_analysis (bull/base/bear, sensitivity,    │ │
+│  │      │                     covenants, runway)              │ │
+│  │      └─ generate_response (citation-validated markdown)    │ │
+│  │                                                            │ │
+│  │   Redis-backed checkpointer per session_id                 │ │
+│  └────────────────────────────────────────────────────────────┘ │
+│                                                                  │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │  Skills Layer: ingestion · retrieval · modeling · scenarios│ │
+│  └────────────────────────────────────────────────────────────┘ │
+│                                                                  │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │  MCP Server (26 tools: citation validator, audit logger…)  │ │
+│  └────────────────────────────────────────────────────────────┘ │
+│                                                                  │
+│  ┌─────────────┐  ┌──────────────┐  ┌──────────────────────┐   │
+│  │  Pinecone   │  │    Redis     │  │    File Storage      │   │
+│  │  (3072-dim, │  │  (session +  │  │  data/uploads/       │   │
+│  │   cosine)   │  │   doc reg.)  │  │  audit_log.jsonl     │   │
+│  └─────────────┘  └──────────────┘  └──────────────────────┘   │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
 ## Tech Stack
 
 | Layer | Choice |
 |-------|--------|
-| Backend | Python 3.11+, FastAPI |
-| Agent Orchestration | LangGraph (StateGraph with conditional routing) |
-| Tool Protocol | MCP (Model Context Protocol) via `mcp` SDK |
-| LLM | Anthropic Claude (claude-sonnet-4-6) |
-| Embeddings | Google Gemini (`gemini-embedding-001`, 3072 dimensions) |
-| Vector Store | Pinecone (serverless, cosine similarity) |
+| Backend | Python 3.13, FastAPI |
+| Agent Orchestration | LangGraph (StateGraph, conditional routing, Redis checkpoint) |
+| LLM | Anthropic Claude `claude-sonnet-4-6` (via `langchain-anthropic`) |
+| Embeddings | Google Gemini `gemini-embedding-001` (3072-dim) |
+| Vector Store | Pinecone (serverless, cosine) |
 | Memory | Redis (Docker) |
-| Frontend | React 18 + TypeScript + Material UI v6 |
-| State Management | Zustand |
-| Charts | Plotly |
+| Tool Protocol | MCP via `mcp` SDK (FastMCP) — 26 tools |
+| Frontend | React 18 + TypeScript + Vite + MUI v6 |
+| State | Zustand (5 stores; `sessionStore` persisted to localStorage) |
+| Transport | Axios (REST), native fetch (SSE) |
+| Charts | Plotly (`react-plotly.js`) |
+| Config | `pydantic-settings` with `SecretStr` for all API keys |
+| Env mgmt | conda (backend), npm (frontend) |
+
+## Capabilities (current)
+
+- **Document ingestion** — PDF/CSV/TXT/HTML up to 50 MB; hierarchical chunking (512-token sections + 64-token overlap, 128-token row chunks) with financial-value normalization (`$1,234` / `(42)` → `1234` / `-42`)
+- **Semantic retrieval** — query embedding → Pinecone top-8 → MMR rerank → top-5 context chunks
+- **Financial modeling** — DCF valuation, ratio scorecard, forecast model, variance analysis
+- **Scenario analysis** — bull/base/bear, 2D sensitivity tables, covenant stress tests, cash runway
+- **Streaming chat** — token-level SSE, citation validation on every factual claim, audit logging to `audit_log.jsonl`
+- **3-panel UI** — collapsible Sources / Chat / Studio panels, 6 background KPI queries on mount (Revenue, Gross Margin, EBITDA, Net Income, Cash Balance, Runway), 4 Quick Action buttons
+- **Operational resilience** — health-gated startup, `make doctor` diagnostics, backend-unreachable modal, `SecretStr`-masked config, empty-env-shadow protection against parent shells that export `ANTHROPIC_API_KEY=""`
 
 ## Prerequisites
 
-- Python 3.11+ (via conda)
-- Node.js 18+
-- Docker (for Redis)
-- API keys: Anthropic, Google Gemini, Pinecone
+- **Python 3.13** via conda
+- **Node.js 18+**
+- **Docker** (for Redis)
+- **API keys:** Anthropic, Google Gemini, Pinecone
 
-## Setup
-
-### 1. Clone and configure
+## Quick Start
 
 ```bash
 git clone https://github.com/AarvinGeorge/cfo-assistant.git
 cd cfo-assistant
-cp backend/.env.example backend/.env
-# Edit backend/.env and add your API keys
+cp backend/.env.example backend/.env    # then add your API keys
+
+# Create Pinecone index in the console:
+#   name: finsight-index, dim: 3072, metric: cosine, type: serverless
+
+make install    # conda env + pip install + npm install
+make start      # Redis + backend (health-gated) + frontend
 ```
 
-### 2. Create Pinecone index
+`make start` polls `GET /health` for up to 15 s before declaring the backend ready. If it fails to come up, the last 20 lines of `logs/backend.log` are tailed and make exits non-zero — so silent failures are impossible.
 
-In the [Pinecone console](https://app.pinecone.io), create an index:
-- **Name:** `finsight-index`
-- **Dimensions:** `3072`
-- **Metric:** `cosine`
-- **Type:** Serverless
+Open **http://localhost:5173**.
 
-### 3. Start Redis
+### Daily workflow
 
 ```bash
+make start     # bring everything up
+make status    # one-shot snapshot
+make doctor    # diagnose any issue (Redis, port 8000, /health, port 5173, .env keys, env binary + PATH shadow)
+make stop      # terminate all services
+tail -f logs/backend.log logs/frontend.log
+```
+
+## Manual Setup (fallback if `make` isn't available)
+
+```bash
+# 1. Redis (docker) — port mapping is mandatory
 docker run -d --name redis-finsight -p 6379:6379 redis:alpine
-```
 
-### 4. Install backend dependencies
-
-```bash
+# 2. Backend
 conda create -n finsight python=3.13 -y
 conda activate finsight
-cd backend
-pip install -r requirements.txt
-```
-
-### 5. Install frontend dependencies
-
-```bash
-cd frontend
-npm install
-```
-
-### 6. Run the server
-
-```bash
-cd ..  # back to project root
+pip install -r backend/requirements.txt
 PYTHONPATH=. uvicorn backend.api.main:app --reload --port 8000
+
+# 3. Frontend (new terminal)
+cd frontend && npm install && npm run dev   # localhost:5173
+
+# 4. Verify
+curl -sf http://localhost:8000/health | python3 -m json.tool
+# → {"status": "ok", "redis": true, "pinecone": true, "anthropic_key": true, "gemini_key": true}
 ```
 
-### 7. Verify
+## Testing
 
 ```bash
-curl http://localhost:8000/health
-```
+# Unit tests (229 tests, no external services)
+conda run -n finsight pytest backend/tests/ -v -k "not integration"
 
-Expected:
-```json
-{"status": "ok", "redis": true, "pinecone": true, "anthropic_key": true, "gemini_key": true}
+# Integration tests (23 tests, requires Redis + Pinecone + live API keys)
+conda run -n finsight pytest backend/tests/ -v -m integration
 ```
 
 ## Project Structure
@@ -122,63 +142,87 @@ Expected:
 finsight-cfo/
 ├── backend/
 │   ├── agents/
-│   │   └── base_agent.py          # Abstract base class for all 6 agents
+│   │   ├── base_agent.py          # Abstract base class
+│   │   ├── graph_state.py         # AgentState TypedDict for LangGraph
+│   │   └── orchestrator.py        # 7-node StateGraph + intent routing
 │   ├── api/
 │   │   ├── main.py                # FastAPI app with startup validation
-│   │   └── routes/
-│   │       ├── health.py          # /health endpoint
-│   │       ├── documents.py       # /documents upload, list, delete
-│   │       ├── chat.py            # /chat and /chat/stream (SSE)
-│   │       ├── models.py          # /models DCF, ratios, forecast, variance
-│   │       └── scenarios.py       # /scenarios run, sensitivity, covenants, runway
+│   │   └── routes/                # health · documents · chat · models · scenarios
 │   ├── core/
-│   │   ├── config.py              # pydantic-settings, typed env access
-│   │   ├── gemini_client.py       # Gemini embedding wrapper
-│   │   ├── pinecone_store.py      # Pinecone client with dimension validation
-│   │   └── redis_client.py        # Redis connection + ping check
-│   ├── agents/
-│   │   ├── base_agent.py          # Abstract base class
-│   │   ├── graph_state.py         # LangGraph typed state schema
-│   │   └── orchestrator.py        # StateGraph with intent routing + agent nodes
+│   │   ├── config.py              # SecretStr Settings + empty-env-shadow strip
+│   │   ├── gemini_client.py       # Gemini embedding wrapper (batch singular key)
+│   │   ├── pinecone_store.py      # Pinecone client with dim validation
+│   │   └── redis_client.py        # Redis connection + ping
 │   ├── skills/
 │   │   ├── document_ingestion.py  # PDF/CSV parsing + hierarchical chunking
 │   │   ├── vector_retrieval.py    # Semantic search + MMR reranking
-│   │   ├── financial_modeling.py  # DCF, ratios, forecast, variance analysis
+│   │   ├── financial_modeling.py  # DCF, ratios, forecast, variance
 │   │   └── scenario_analysis.py   # Scenarios, sensitivity, covenants, runway
 │   ├── mcp_server/
-│   │   ├── financial_mcp_server.py # MCP server with 26 registered tools
+│   │   ├── financial_mcp_server.py # 26 registered tools
 │   │   └── tools/                  # Tool implementations by domain
-│   ├── tests/                      # pytest suite (193 unit + 23 integration)
+│   ├── tests/                      # 229 unit + 23 integration
 │   ├── .env.example
 │   └── requirements.txt
-└── frontend/
-    ├── package.json               # React 18 + MUI v6 + Zustand + Plotly
-    └── tsconfig.json
-```
-
-## Testing
-
-```bash
-cd backend
-
-# Unit tests (no external services needed)
-conda run -n finsight pytest tests/ -v -k "not integration"
-
-# Integration tests (requires Redis + Pinecone + Gemini API keys)
-conda run -n finsight pytest tests/ -v -m integration
-
-# All tests
-conda run -n finsight pytest tests/ -v
+├── frontend/
+│   └── src/
+│       ├── components/
+│       │   ├── panels/            # LeftPanel · CenterPanel · RightPanel
+│       │   ├── chat/              # ChatBubble · CitationChip · StreamingIndicator
+│       │   └── common/            # BackendUnreachableModal (Figma Variant D)
+│       ├── stores/                # sessionStore · chatStore · documentStore
+│       │                          #   dashboardStore · connectionStore
+│       ├── api/axiosClient.ts     # interceptor flips connectionStore on ERR_NETWORK
+│       ├── theme/muiTheme.ts      # dark + light themes with design tokens
+│       ├── App.tsx                # 3-panel shell + <BackendUnreachableModal />
+│       └── main.tsx
+├── data/uploads/                  # Uploaded documents (gitignored)
+├── logs/                          # backend.log + frontend.log (gitignored)
+├── Makefile                       # start / stop / status / doctor / install
+├── CLAUDE.md                      # Project source of truth (architecture, conventions,
+│                                  #   operational gotchas, decision log)
+└── README.md                      # This file
 ```
 
 ## Development Phases
 
-- [x] **Phase 1 — Foundation:** Project scaffold, FastAPI, config, Pinecone/Redis/Gemini clients, BaseAgent, MCP server scaffold (26 tool stubs)
-- [x] **Phase 2 — Ingestion & RAG:** PDF/CSV parsing, hierarchical chunking, Gemini embedding, Pinecone upsert/search, MMR reranking, /documents API
-- [x] **Phase 3 — Financial Modeling:** DCF, ratio scorecard, forecasting, variance analysis, scenario/sensitivity/covenants/runway
-- [x] **Phase 4 — Agent Integration:** LangGraph orchestrator with intent routing, 5 agent nodes, Redis checkpointing, SSE streaming chat, audit logging
-- [ ] **Phase 5 — Frontend:** React + MUI pages (Dashboard, Chat, Documents, Models, Scenarios, Reports)
-- [ ] **Phase 6 — Output & Polish:** Excel/PDF generation, packaging, documentation
+- [x] **Phase 1 — Foundation:** FastAPI scaffold, config, Pinecone/Redis/Gemini clients, MCP scaffold (26 tool stubs)
+- [x] **Phase 2 — Ingestion & RAG:** PDF/CSV parsing, hierarchical chunking, embedding, Pinecone upsert/search, MMR reranking
+- [x] **Phase 3 — Financial Modeling:** DCF, ratio scorecard, forecasting, variance, scenarios, covenants, runway
+- [x] **Phase 4 — Agent Integration:** LangGraph orchestrator, intent routing, Redis checkpointing, SSE streaming, audit logging
+- [x] **Phase 5 — Frontend:** 3-panel NotebookLM-inspired layout (Sources │ Chat │ Studio), KPI dashboard, backend-unreachable modal
+- [ ] **Phase 6 — Output & Polish (in progress):**
+  - [x] SecretStr masking + empty-env-shadow protection
+  - [x] `make doctor` diagnostic target
+  - [x] Health-gated `make start` (replaces blind `sleep 2`)
+  - [x] Log redirection to `logs/backend.log` + `logs/frontend.log`
+  - [x] Backend-unreachable modal dialog
+  - [ ] Excel/PDF export endpoints (`/models/export/xlsx`, `/models/export/pdf`)
+  - [ ] Cloud deployment (secrets → provider secret manager)
+
+## Troubleshooting
+
+When something's off, run **`make doctor`** first. It checks the five most common failure modes in under 2 seconds: Redis container, finsight env binary (and PATH shadow), port 8000, `/health`, port 5173, `.env` keys.
+
+Common pitfalls (see `CLAUDE.md` § *Operational Gotchas* for the full list):
+
+- **Redis container "Up" but backend can't connect** → the container was started without `-p 6379:6379`. Check `docker ps --filter name=redis-finsight --format '{{.Ports}}'` — you must see `0.0.0.0:6379->6379/tcp`. If not, `docker rm` and re-run with the port flag.
+- **Backend crashes on `ModuleNotFoundError: No module named 'fastapi'`** → a system-Python `uvicorn` is shadowing the conda env on PATH. The Makefile pins the absolute path (`$HOME/miniconda3/envs/finsight/bin/uvicorn`), so `make start` is safe; `make doctor` flags the shadow informationally.
+- **`ANTHROPIC_API_KEY is not set` even though `.env` has it** → a parent shell exported `ANTHROPIC_API_KEY=""`. `_strip_empty_shadow_env()` in `backend/core/config.py` handles this.
+- **"Upload failed" with no detail in the UI** → a network-level failure (backend unreachable). The `BackendUnreachableModal` should surface this; if it doesn't, check `logs/backend.log`.
+- **Chat responses flag "N uncited claims"** → prompt-engineering issue in markdown table rows, not a pipeline bug. Main figures are cited; detail rows aren't individually tagged.
+
+## Security
+
+- API keys live in `backend/.env` (gitignored); **never** committed or hardcoded.
+- All `*_api_key` fields on the `Settings` model are typed as `pydantic.SecretStr` so tracebacks, `repr(settings)`, and log dumps all render `SecretStr('**********')`. Real values are accessed only via `.get_secret_value()` at SDK-client construction sites.
+- Uploaded filenames are sanitized; extension whitelist is `.pdf .csv .txt .html`; size cap is 50 MB.
+- Audit trail of every intent classification and response is written to `audit_log.jsonl`.
+
+## Further reading
+
+- **`CLAUDE.md`** — authoritative architecture reference, coding conventions, decision log, and operational gotchas harvested from real debug cycles.
+- **`docs/superpowers/plans/`** — phase-by-phase implementation plans.
 
 ## License
 
