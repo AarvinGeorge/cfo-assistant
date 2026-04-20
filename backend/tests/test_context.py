@@ -37,3 +37,17 @@ def test_request_context_works_as_fastapi_dependency():
     r = client.get("/whoami")
     assert r.status_code == 200
     assert r.json() == {"user": "usr_default", "workspace": "wks_default"}
+
+
+def test_request_context_reads_workspace_id_from_header():
+    """X-Workspace-ID header overrides the default workspace_id."""
+    app = FastAPI()
+
+    @app.get("/whoami")
+    def whoami(ctx: RequestContext = Depends(get_request_context)):
+        return {"workspace": ctx.workspace_id}
+
+    client = TestClient(app)
+    r = client.get("/whoami", headers={"X-Workspace-ID": "wks_acme"})
+    assert r.status_code == 200
+    assert r.json()["workspace"] == "wks_acme"
