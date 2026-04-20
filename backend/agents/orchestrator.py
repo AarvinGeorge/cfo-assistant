@@ -32,7 +32,7 @@ import json
 import re
 
 from langgraph.graph import StateGraph, END
-from langgraph.checkpoint.redis import RedisSaver
+from langgraph.checkpoint.sqlite import SqliteSaver
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 
@@ -421,13 +421,17 @@ def build_graph(checkpointer=None):
 
 
 def get_checkpointer():
-    """Create a Redis-backed checkpointer for conversation persistence."""
+    """SQLite-backed checkpointer; shares data/finsight.db with the control plane."""
+    import sqlite3
+    from backend.core.config import get_settings
     settings = get_settings()
-    redis_url = f"redis://{settings.redis_host}:{settings.redis_port}/{settings.redis_db}"
-    return RedisSaver.from_conn_string(redis_url)
+    db_url = getattr(settings, "database_url", "sqlite:///data/finsight.db")
+    db_path = db_url.replace("sqlite:///", "")
+    conn = sqlite3.connect(db_path, check_same_thread=False)
+    return SqliteSaver(conn)
 
 
 def get_compiled_graph():
-    """Get the compiled graph with Redis checkpointer."""
+    """Get the compiled graph with SQLite checkpointer."""
     checkpointer = get_checkpointer()
     return build_graph(checkpointer=checkpointer)
