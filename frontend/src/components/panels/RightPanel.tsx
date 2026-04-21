@@ -100,22 +100,52 @@ function KPICard({ label, data, loading }: { label: string; data: KpiEntry | nul
     )
   }
 
-  // Truncate the Claude response to first 120 chars for the card summary
-  const excerpt = data?.response
-    ? data.response.length > 120
-      ? data.response.slice(0, 120) + '…'
-      : data.response
-    : null
+  // Use the parsed headline/period/note from the backend (parse_kpi_response).
+  // Fall back to truncated raw response if somehow the parser produced nothing
+  // (e.g. legacy cached entries from before the prompt-format change).
+  const headline = data?.headline?.trim() || (
+    data?.response ? (data.response.length > 40 ? data.response.slice(0, 40) + '…' : data.response) : '—'
+  )
+  const period = data?.period?.trim() || ''
+  const note = data?.note?.trim() || ''
+
+  // Full response shown on hover via native title tooltip — useful when the
+  // parsed headline is terse and the user wants the full analysis.
+  const tooltip = data?.response?.trim() || undefined
 
   return (
-    <Card variant="outlined" sx={{ bgcolor: 'action.hover', border: 'none' }}>
+    <Card
+      variant="outlined"
+      sx={{ bgcolor: 'action.hover', border: 'none' }}
+      title={tooltip}
+    >
       <CardContent sx={{ p: '10px !important' }}>
-        <Typography variant="caption" color="text.secondary" sx={{ fontSize: 10, fontWeight: 500, letterSpacing: '0.04em' }}>
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          sx={{ fontSize: 10, fontWeight: 500, letterSpacing: '0.04em' }}
+        >
           {label.toUpperCase()}
         </Typography>
-        <Typography variant="body2" fontWeight={600} sx={{ lineHeight: 1.4, mt: 0.25, fontSize: 11 }}>
-          {excerpt ?? '—'}
+        <Typography
+          variant="body1"
+          fontWeight={700}
+          sx={{ lineHeight: 1.2, mt: 0.25, fontSize: 18 }}
+          noWrap
+        >
+          {headline}
         </Typography>
+        {(period || note) && (
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ fontSize: 10, display: 'block', mt: 0.25, lineHeight: 1.3 }}
+          >
+            {period}
+            {period && note ? ' · ' : ''}
+            {note}
+          </Typography>
+        )}
       </CardContent>
     </Card>
   )

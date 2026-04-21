@@ -73,13 +73,20 @@ def test_client(monkeypatch):
 
 
 def _mock_compute_kpis(ctx):
-    """Returns canned KpiEntry objects without calling Claude."""
+    """Returns canned KpiEntry objects without calling Claude.
+
+    Uses the pipe-delimited format ('HEADLINE | PERIOD | NOTE') that the
+    real prompts now demand so the parsed fields exercise the parser too.
+    """
     now = datetime.utcnow()
     return {
         key: KpiEntry(
-            response=f"Mock {key}: $100M",
+            response=f"$100M | FY2025 | mock {key}",
             citations=[f"mock-source-{key}.pdf"],
             computed_at=now,
+            headline="$100M",
+            period="FY2025",
+            note=f"mock {key}",
         )
         for key in KPI_PROMPTS
     }

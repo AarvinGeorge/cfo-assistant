@@ -62,9 +62,12 @@ export interface HealthStatus {
 }
 
 export interface KpiEntry {
-  response: string
+  response: string       // raw Claude response (fallback for malformed parses)
   citations: string[]
-  computed_at: string  // ISO timestamp
+  computed_at: string    // ISO timestamp
+  headline: string       // e.g. "$22.6B" or "45.2%" — parsed by backend
+  period: string         // e.g. "FY2025" — parsed by backend
+  note: string           // e.g. "+13% YoY" — parsed by backend
 }
 
 export interface KpisResponse {
