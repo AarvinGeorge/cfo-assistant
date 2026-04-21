@@ -16,6 +16,8 @@ Main parts:
     - WorkspaceMember: workspace_id <-> user_id with a role (owner|editor|viewer).
     - Document: a registered uploaded file inside a workspace.
     - ChatSession: a single conversation thread inside a workspace.
+    - WorkspaceKpiCache: 24-hour SQLite cache for the 6 KPI dashboard values,
+      keyed by (workspace_id, kpi_key). Invalidated on document upload/delete.
 """
 from __future__ import annotations
 
@@ -129,3 +131,22 @@ Index(
     "idx_chat_sessions_workspace_recent",
     ChatSession.workspace_id, ChatSession.last_message_at.desc(),
 )
+
+
+class WorkspaceKpiCache(Base):
+    """24-hour cache for the 6 KPI dashboard values per workspace.
+
+    Composite primary key (workspace_id, kpi_key) ensures at most one row
+    per KPI per workspace. Invalidated on document upload or delete via
+    invalidate_workspace_cache() in backend/api/routes/kpis.py.
+    """
+
+    __tablename__ = "workspace_kpi_cache"
+
+    workspace_id: Mapped[str] = mapped_column(
+        String, ForeignKey("workspaces.id", ondelete="CASCADE"), primary_key=True
+    )
+    kpi_key: Mapped[str] = mapped_column(String, primary_key=True)
+    response: Mapped[str] = mapped_column(String, nullable=False)
+    citations: Mapped[str] = mapped_column(String, nullable=False)  # JSON-encoded list
+    computed_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
