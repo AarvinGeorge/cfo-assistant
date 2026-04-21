@@ -26,9 +26,13 @@ FastAPI Backend Server
   │     ├── financial_modeling.py
   │     └── scenario_analysis.py
   ├── MCP Server (26 registered tools)
+  ├── API Routes
+  │     ├── /workspaces/ (POST create, GET list, PATCH update)
+  │     └── /kpis/ (GET with 24h SQLite cache → workspace_kpi_cache)
   └── Infrastructure
         ├── Pinecone (vector store, dim=3072, cosine; namespace per workspace)
-        ├── SQLite (control plane: users, workspaces, documents, checkpoints)
+        ├── SQLite (control plane: users, workspaces, documents, checkpoints,
+        │           workspace_kpi_cache)
         └── Gemini (embeddings, gemini-embedding-001)
 ```
 
@@ -65,7 +69,7 @@ FastAPI Backend Server
 | Phase 3 — Financial Modeling | ✅ DONE | DCF, ratio scorecard, forecasting, variance, scenarios, covenants, runway |
 | Phase 4 — Agent Integration | ✅ DONE | LangGraph orchestrator, intent routing, SqliteSaver checkpointing, SSE streaming |
 | Phase 5 — Frontend | ✅ DONE | 3-panel NotebookLM-inspired layout (Sources \| Chat \| Studio), KPI dashboard |
-| Phase 6 — Output & Polish | 🚧 IN PROGRESS | Infra hardening done (SecretStr, `make doctor`, health-gated `make start`, log redirection, backend-unreachable modal, SQLite control plane + multi-tenant scaffolding, Redis removed); Excel/PDF export + cloud deployment remain |
+| Phase 6 — Output & Polish | 🚧 IN PROGRESS | Infra hardening done (SecretStr, `make doctor`, health-gated `make start`, log redirection, backend-unreachable modal, SQLite control plane + multi-tenant scaffolding, Redis removed); workspace management UI, KPI cache layer, KPI response parser shipped; Excel/PDF export + cloud deployment remain |
 
 ---
 
@@ -81,6 +85,7 @@ FastAPI Backend Server
 8. **Environment security** — API keys in `.env`, never hardcoded or committed. Every `*_api_key` field on the `Settings` model is typed as `pydantic.SecretStr` so tracebacks, log dumps, `print(settings)`, and repr() all render `SecretStr('**********')`. Call sites use `.get_secret_value()` only at the point of SDK client construction.
 9. **File upload security** — filenames sanitized, 50MB limit, types: `.pdf .csv .txt .html`
 10. **Empty-env-shadow protection** — `get_settings()` in `backend/core/config.py` calls `_strip_empty_shadow_env()` which deletes empty-string sensitive env vars from `os.environ` before pydantic reads. This prevents parent processes (e.g. Claude Code, which exports `ANTHROPIC_API_KEY=""` for security hygiene) from silently shadowing real values in `.env`. Non-empty env overrides still work — tested via `test_non_empty_env_still_overrides_dotenv`.
+11. **KPI display safety** — KPI cards surface a parsed headline via `parse_kpi_response()` — never display raw Claude markdown in compact UI surfaces.
 
 ---
 
@@ -104,19 +109,20 @@ No React Router. Single `App.tsx` shell with three collapsible panels:
 - `BackendUnreachableModal` — blocking modal rendered at the root of `App.tsx`, shown when the axios interceptor flips `connectionStore.backendUnreachable` (matches Figma Variant D)
 
 **Zustand stores:**
-- `sessionStore` — `themeMode`, `leftPanelOpen`, `rightPanelOpen`, `sessionId` *(persisted to localStorage key: `finsight-session`)*
+- `sessionStore` — `themeMode`, `leftPanelOpen`, `rightPanelOpen`, `sessionId`, `workspaceId` *(persisted to localStorage key: `finsight-session`)*
 - `chatStore` — messages, isStreaming, currentIntent, sendMessage(), clearChat()
 - `documentStore` — documents list, loading, fetchDocuments(), uploadDocument(), deleteDocument()
-- `dashboardStore` — KPI values (populated by 6 background chat queries), loading, lastUpdated
+- `dashboardStore` — KPI values (populated by `GET /kpis/`), status, cacheHit, computedAt, loading
 - `connectionStore` — `backendUnreachable` flag, updated bidirectionally by the axios response interceptor (set on ERR_NETWORK, cleared on any HTTP response)
+- `workspaceStore` — workspaces array, fetchWorkspaces(), createWorkspace(); creating auto-switches active workspace
 
 **Design tokens** (`muiTheme.ts`):
 - Dark bg: `#1C1C1E`, surface: `#2C2C2E`, elevated: `#3A3A3C`
 - Accent: `#7c4dff`, favorable: `#00e676`, unfavorable/error: `#ff5252`, success: `#10B964`
 - `action.selected` wired to elevated token (`#3A3A3C`)
 
-**KPI queries** — 6 background `POST /chat` calls on `RightPanel` mount:
-Revenue, Gross Margin, EBITDA, Net Income, Cash Balance, Cash Runway
+**KPI queries** — `GET /kpis/` call on `RightPanel` mount (replaces 6 individual `POST /chat` calls); 24h SQLite cache means zero Claude calls on page refresh. Refresh button + "Updated N min ago" indicator shown. Empty workspace shows "Upload a document to see KPIs." Empty state fires zero Claude calls.
+KPI keys: `revenue`, `gross_margin`, `ebitda`, `net_income`, `cash_balance`, `runway`
 
 ---
 
@@ -138,7 +144,7 @@ All UI design decisions trace back to this Figma file. Any deviation between the
 
 ---
 
-## Backend API Surface (15 endpoints)
+## Backend API Surface (20 endpoints)
 
 | Method | Path | Purpose | Request body |
 |--------|------|---------|---|
@@ -147,7 +153,8 @@ All UI design decisions trace back to this Figma file. Any deviation between the
 | POST | `/chat/stream` | Chat → SSE stream (token-level) | Same as `/chat/` |
 | POST | `/documents/upload` | Upload + parse + chunk + embed + index | `multipart/form-data` with `file`, `doc_type`, `fiscal_year` |
 | GET | `/documents/` | List all ingested documents | — |
-| DELETE | `/documents/{doc_id}` | Delete document + vectors | — |
+| DELETE | `/documents/{doc_id}` | Delete document + vectors; auto-invalidates KPI cache | — |
+| GET | `/kpis/` | Get 6 KPI values; 24h SQLite cache, `?refresh=true` to bust | — |
 | POST | `/models/dcf` | DCF valuation |
 | POST | `/models/ratios` | Ratio scorecard |
 | POST | `/models/forecast` | Forecast model |
@@ -157,6 +164,9 @@ All UI design decisions trace back to this Figma file. Any deviation between the
 | POST | `/scenarios/sensitivity` | 2D sensitivity table |
 | POST | `/scenarios/covenants` | Covenant stress test |
 | POST | `/scenarios/runway` | Cash runway |
+| POST | `/workspaces/` | Create workspace (`wks_<8hex>` ID, scoped to owner) | `{"name": "...", "description": "..."}` |
+| GET | `/workspaces/` | List workspaces for current user (excludes archived) | — |
+| PATCH | `/workspaces/{id}` | Update workspace name / description / status | `{"name": "...", "description": "...", "status": "..."}` |
 
 Backend: `PYTHONPATH=. uvicorn backend.api.main:app --reload --port 8000`
 
@@ -236,28 +246,31 @@ Main parts:
 finsight-cfo/
 ├── backend/
 │   ├── agents/          # LangGraph orchestrator + graph_state.py + base_agent.py
-│   ├── api/routes/      # FastAPI endpoints (incl. health.py)
+│   ├── api/routes/      # FastAPI endpoints (incl. health.py, workspaces.py,
+│   │                    #   kpis.py with KPI_PROMPTS + parse_kpi_response)
 │   ├── core/            # config.py (SecretStr + env-shadow strip), gemini_client.py,
 │   │                    #   pinecone_store.py, context.py (RequestContext),
 │   │                    #   transactions.py (StorageTransaction)
-│   ├── db/              # engine.py (SQLAlchemy + WAL), models.py (ORM),
-│   │                    #   __init__.py, migrations/ (Alembic versions)
+│   ├── db/              # engine.py (SQLAlchemy + WAL), models.py (ORM incl.
+│   │                    #   WorkspaceKpiCache), __init__.py, migrations/ (Alembic versions)
 │   ├── skills/          # document_ingestion, vector_retrieval, financial_modeling,
 │   │                    #   scenario_analysis
 │   ├── mcp_server/      # financial_mcp_server.py + tools/
 │   ├── scripts/         # migrate_to_workspace_schema.py, stats.py (SQLite-backed)
-│   ├── tests/           # 242 unit tests
+│   ├── tests/           # 282 unit tests (incl. test_kpi_response_parser.py — 17 tests)
 │   ├── .env             # Secrets (never committed — *.env is gitignored)
 │   ├── .env.example     # Template with placeholder values
 │   └── requirements.txt
 ├── frontend/
 │   └── src/
 │       ├── components/
-│       │   ├── panels/  # LeftPanel.tsx, CenterPanel.tsx, RightPanel.tsx
-│       │   ├── chat/    # ChatBubble.tsx, CitationChip.tsx, StreamingIndicator.tsx
-│       │   └── common/  # BackendUnreachableModal.tsx (blocking modal on ERR_NETWORK)
+│       │   ├── panels/     # LeftPanel.tsx, CenterPanel.tsx, RightPanel.tsx
+│       │   ├── chat/       # ChatBubble.tsx, CitationChip.tsx, StreamingIndicator.tsx
+│       │   ├── common/     # BackendUnreachableModal.tsx (blocking modal on ERR_NETWORK)
+│       │   └── workspace/  # WorkspaceSwitcher.tsx (MUI Button+Menu, accent dot),
+│       │                   #   CreateWorkspaceModal.tsx (name + description form)
 │       ├── stores/      # sessionStore, chatStore, documentStore, dashboardStore,
-│       │                #   connectionStore
+│       │                #   connectionStore, workspaceStore
 │       ├── api/         # axiosClient.ts (baseURL: localhost:8000 + interceptor
 │       │                #   that flips connectionStore.backendUnreachable)
 │       ├── theme/       # muiTheme.ts (dark + light themes)
@@ -329,7 +342,7 @@ cd frontend && npm run dev   # localhost:5173
 
 **Tests:**
 ```bash
-conda run -n finsight pytest backend/tests/ -v -k "not integration"   # unit (242)
+conda run -n finsight pytest backend/tests/ -v -k "not integration"   # unit (282)
 conda run -n finsight pytest backend/tests/ -v -m integration          # integration tests
 ```
 
@@ -355,6 +368,9 @@ conda run -n finsight pytest backend/tests/ -v -m integration          # integra
 | 2026-04-20 | PR #2 — SQLite foundation (SQLAlchemy 2.x + Alembic) | Replaced Redis as the document registry; `data/finsight.db` holds users, workspaces, workspace_members, documents, chat_sessions; `alembic upgrade head` bootstraps the schema |
 | 2026-04-20 | PR #3 — multi-tenant storage refactor (`StorageTransaction`, `RequestContext`, namespace-per-workspace) | Pinecone default namespace retired; each workspace gets `namespace = workspace_id` (`wks_default` in v1). `StorageTransaction` makes SQLite + Pinecone + disk writes atomic with compensating actions. `RequestContext(user_id, workspace_id)` threaded through every route via FastAPI dependency. File layout reorganized to `data/uploads/{workspace_id}/{doc_id}.{ext}` |
 | 2026-04-20 | PR #4 — Redis removed; `SqliteSaver` adopted; `mcp_memory_write/read` deleted | No Docker required for local dev. `langgraph-checkpoint-sqlite` replaces `langgraph-checkpoint-redis`. Redundant MCP memory tools removed — LangGraph state is single source of truth for messages. `make start/stop/doctor/status` no longer mention Redis |
+| 2026-04-20 | PR #5 — Workspace CRUD + UI (`POST/GET/PATCH /workspaces/`, `WorkspaceSwitcher`, `CreateWorkspaceModal`) | Multi-workspace support required isolated Pinecone namespaces per workspace. `RequestContext` dependency reused — no new middleware. Auto-switch-on-create UX closes the modal and re-renders all panels to the new workspace. Seeded-defaults Alembic migration (`16ece49d77a9`) handles fresh-clone bootstrap via `INSERT OR IGNORE`. Returns 404 (not 403) for workspaces owned by a different user to avoid leaking existence. |
+| 2026-04-21 | PR #6 — KPI cache layer (`workspace_kpi_cache` SQLite table, `GET /kpis/`, 24h TTL, auto-invalidation on upload/delete) | Before this, 6 `POST /chat` calls on every page refresh triggered 12 Claude calls (~$9/day in dev). Cache short-circuits to `{status: "empty"}` for workspaces with 0 documents (0 Claude calls). Cache auto-invalidated on upload or document delete. `KPI_PROMPTS` kept short because long format instructions dominated Gemini embeddings → zero RAG chunks retrieved. |
+| 2026-04-21 | PR #7 — KPI prose parser (`parse_kpi_response`, headline/period/note extraction) | KPI cards were rendering raw Claude markdown truncated at 120 chars. First attempt used format-instruction prompts (e.g. "respond with only the dollar amount") — broke RAG retrieval because the instruction tokens dominated the Gemini embedding and no relevant chunks were found. Pivoted to parse-on-read: store full Claude markdown, extract headline/period/note at read time via regex. Bails to `N/A` cleanly when no unit-qualified figure is found. |
 
 ## Known TODOs (Phase 6)
 
@@ -377,6 +393,11 @@ conda run -n finsight pytest backend/tests/ -v -m integration          # integra
 - ~~SQLite control plane (SQLAlchemy + Alembic) replacing Redis document registry~~
 - ~~Multi-tenant scaffolding (RequestContext, StorageTransaction, namespace-per-workspace)~~
 - ~~Redis removed; Docker no longer required for local dev~~
+
+**Workspace + KPI — ✅ DONE 2026-04-20 → 2026-04-21:**
+- ~~Workspace CRUD + UI (POST/GET/PATCH /workspaces/, WorkspaceSwitcher, CreateWorkspaceModal)~~
+- ~~KPI cache layer (workspace_kpi_cache, GET /kpis/, 24h TTL, auto-invalidation)~~
+- ~~KPI response parser (parse_kpi_response, headline/period/note extraction)~~
 
 ---
 
@@ -421,6 +442,15 @@ Durable knowledge harvested from a real debug-and-harden cycle. These are the th
 - **`make doctor` first, always.** It surfaces the most common failure modes in < 2 seconds (SQLite db exists, port 8000, `/health`, port 5173, `.env` keys). Trying to diagnose without it wastes 20 minutes clicking around.
 - **When a 500 comes back from `/documents/upload`, the stack trace lives in `logs/backend.log`.** The JSON error body is useless; the traceback is not.
 - **Never share, screenshot, or paste `.env` contents or any `print(settings)` / `repr(settings)` output.** SecretStr now protects the latter, but discipline matters. Any Settings-like dict must explicitly `.get_secret_value()` the field — or better, leave the masked value in place.
+
+### KPI cache invalidation
+
+- **24h TTL + explicit invalidation.** `workspace_kpi_cache` rows are auto-deleted after successful `upload_document` or `remove_document` for that workspace. No manual cache flush is needed.
+- **Cache hits fire zero Claude calls.** `GET /kpis/` returning `cache_hit: true` does not touch the LangGraph orchestrator. The `computedAt` timestamp tells you when the cache was last populated.
+- **First view of a new workspace with documents costs ~12 Claude calls (~$0.30).** Cache is cold; the 6 KPI prompts each go through classify_intent + generate_response. Subsequent page refreshes within 24h are free.
+- **Empty workspace fires zero Claude calls.** `GET /kpis/` short-circuits to `{status: "empty"}` when the workspace has 0 documents, before any LLM is invoked.
+- **The parser is defensive.** `parse_kpi_response()` extracts headline/period/note from natural Claude markdown via regex. Format-instruction prompts were tried first (e.g. "respond with only the dollar amount") but they dominated the Gemini embedding for RAG retrieval — zero chunks were returned. Parse-on-read avoids this entirely.
+- **If KPI cards show raw markdown**, hard-refresh the browser (Cmd+Shift+R) to pick up the latest frontend bundle.
 
 ### Deferred / known-unknowns
 
@@ -469,8 +499,15 @@ curl -s -X POST http://localhost:8000/chat/ \
   -d '{"message":"What was total revenue?","session_id":"debug-01"}' \
   | python3 -m json.tool
 
+# Workspaces
+curl -s http://localhost:8000/workspaces/ | python3 -m json.tool
+
+# KPIs (cache hit returns cache_hit: true and fires zero Claude calls)
+curl -s http://localhost:8000/kpis/ | python3 -m json.tool
+curl -s 'http://localhost:8000/kpis/?refresh=true' | python3 -m json.tool  # force refresh
+
 # ── Tests ───────────────────────────────────────────────────────────────────
-conda run -n finsight pytest backend/tests/ -v -k "not integration"   # 242 unit
+conda run -n finsight pytest backend/tests/ -v -k "not integration"   # 282 unit
 conda run -n finsight pytest backend/tests/ -v -m integration          # integration tests
 
 # ── Start backend directly (bypass make when debugging the Makefile itself) ─

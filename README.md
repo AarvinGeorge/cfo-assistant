@@ -45,6 +45,8 @@ A locally-deployed, RAG-powered financial intelligence assistant for CFOs. Inges
 └──────────────────────────────────────────────────────────────────┘
 ```
 
+API surface: `/health` · `/chat/` · `/chat/stream` · `/documents/*` · `/workspaces/*` · `/kpis/` · `/models/*` · `/scenarios/*`
+
 ## Tech Stack
 
 | Layer | Choice |
@@ -70,7 +72,10 @@ A locally-deployed, RAG-powered financial intelligence assistant for CFOs. Inges
 - **Financial modeling** — DCF valuation, ratio scorecard, forecast model, variance analysis
 - **Scenario analysis** — bull/base/bear, 2D sensitivity tables, covenant stress tests, cash runway
 - **Streaming chat** — token-level SSE, citation validation on every factual claim, audit logging to `audit_log.jsonl`
-- **3-panel UI** — collapsible Sources / Chat / Studio panels, 6 background KPI queries on mount (Revenue, Gross Margin, EBITDA, Net Income, Cash Balance, Runway), 4 Quick Action buttons
+- **3-panel UI** — collapsible Sources / Chat / Studio panels, 6 KPI cards (Revenue, Gross Margin, EBITDA, Net Income, Cash Balance, Runway), 4 Quick Action buttons
+- **Multi-workspace support** — create/switch/archive workspaces; Pinecone namespace per workspace guarantees document isolation
+- **KPI dashboard with SQLite caching** — 24h TTL, auto-invalidation on document upload/delete, 0 Claude calls on cache hits
+- **KPI headline parser** — regex-extracts clean `$X.XB · FYxxxx · ±X%` from Claude's full markdown analysis for compact card display
 - **Operational resilience** — health-gated startup, `make doctor` diagnostics, backend-unreachable modal, `SecretStr`-masked config, empty-env-shadow protection against parent shells that export `ANTHROPIC_API_KEY=""`
 
 ## Prerequisites
@@ -128,7 +133,7 @@ curl -sf http://localhost:8000/health | python3 -m json.tool
 ## Testing
 
 ```bash
-# Unit tests (242 tests, no external services)
+# Unit tests (282 tests, no external services)
 conda run -n finsight pytest backend/tests/ -v -k "not integration"
 
 # Integration tests (requires Pinecone + live API keys)
@@ -147,6 +152,7 @@ finsight-cfo/
 │   ├── api/
 │   │   ├── main.py                # FastAPI app with startup validation
 │   │   └── routes/                # health · documents · chat · models · scenarios
+│   │                              #   workspaces · kpis (KPI_PROMPTS, parse_kpi_response)
 │   ├── core/
 │   │   ├── config.py              # SecretStr Settings + empty-env-shadow strip
 │   │   ├── context.py             # RequestContext (user_id, workspace_id) dependency
@@ -155,7 +161,8 @@ finsight-cfo/
 │   │   └── pinecone_store.py      # Pinecone client with dim validation + namespace support
 │   ├── db/
 │   │   ├── engine.py              # SQLAlchemy engine (WAL + foreign keys)
-│   │   ├── models.py              # ORM: User, Workspace, Document, ChatSession
+│   │   ├── models.py              # ORM: User, Workspace, Document, ChatSession,
+│   │   │                          #   WorkspaceKpiCache
 │   │   └── migrations/            # Alembic version scripts
 │   ├── skills/
 │   │   ├── document_ingestion.py  # PDF/CSV parsing + hierarchical chunking
@@ -168,7 +175,7 @@ finsight-cfo/
 │   ├── scripts/
 │   │   ├── migrate_to_workspace_schema.py  # One-time data migration
 │   │   └── stats.py                        # Pinecone + SQLite cross-reference
-│   ├── tests/                      # 242 unit tests
+│   ├── tests/                      # 282 unit tests
 │   ├── .env.example
 │   └── requirements.txt
 ├── frontend/
@@ -176,9 +183,10 @@ finsight-cfo/
 │       ├── components/
 │       │   ├── panels/            # LeftPanel · CenterPanel · RightPanel
 │       │   ├── chat/              # ChatBubble · CitationChip · StreamingIndicator
-│       │   └── common/            # BackendUnreachableModal (Figma Variant D)
+│       │   ├── common/            # BackendUnreachableModal (Figma Variant D)
+│       │   └── workspace/         # WorkspaceSwitcher · CreateWorkspaceModal
 │       ├── stores/                # sessionStore · chatStore · documentStore
-│       │                          #   dashboardStore · connectionStore
+│       │                          #   dashboardStore · connectionStore · workspaceStore
 │       ├── api/axiosClient.ts     # interceptor flips connectionStore on ERR_NETWORK
 │       ├── theme/muiTheme.ts      # dark + light themes with design tokens
 │       ├── App.tsx                # 3-panel shell + <BackendUnreachableModal />
@@ -210,6 +218,9 @@ finsight-cfo/
   - [x] SQLite control plane (SQLAlchemy + Alembic) — document registry, LangGraph checkpoints
   - [x] Multi-tenant scaffolding (RequestContext, StorageTransaction, namespace-per-workspace)
   - [x] Redis removed — no Docker required for local dev
+  - [x] Multi-workspace CRUD + UI (`POST/GET/PATCH /workspaces/`, WorkspaceSwitcher, CreateWorkspaceModal)
+  - [x] KPI cache layer (`workspace_kpi_cache`, `GET /kpis/`, 24h TTL, auto-invalidation)
+  - [x] KPI response parser (`parse_kpi_response`, headline/period/note extraction)
   - [ ] Excel/PDF export endpoints (`/models/export/xlsx`, `/models/export/pdf`)
   - [ ] Cloud deployment (secrets → provider secret manager)
 
@@ -225,6 +236,7 @@ Common pitfalls (see `CLAUDE.md` § *Operational Gotchas* for the full list):
 - **"Upload failed" with no detail in the UI** → a network-level failure (backend unreachable). The `BackendUnreachableModal` should surface this; if it doesn't, check `logs/backend.log`.
 - **Chat responses flag "N uncited claims"** → prompt-engineering issue in markdown table rows, not a pipeline bug. Main figures are cited; detail rows aren't individually tagged.
 - **Sources panel empty after deleting `finsight.db`** → Pinecone vectors survive but the documents table does not. Re-upload documents or restore from a backup (`cp backup.db data/finsight.db`).
+- **KPI cards show raw markdown** → hard-refresh the browser (Cmd+Shift+R) to pick up the latest frontend bundle.
 
 ## Security
 
