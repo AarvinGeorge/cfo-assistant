@@ -9,8 +9,8 @@
  *   Single authoritative layout. There is no React Router — App.tsx IS the
  *   application. It owns the panel width calculations, collapse transitions,
  *   the single fetchDocuments() call that populates LeftPanel on mount, and
- *   the workspace-change effect that refetches documents and clears chat when
- *   the active workspace changes.
+ *   the workspace-change effect that refetches documents, clears chat, and
+ *   refetches KPIs when the active workspace changes.
  *
  * Main parts:
  *   - LEFT_W / RIGHT_W / COLLAPSED_W: module-level constants (280 / 340 / 48px)
@@ -19,8 +19,8 @@
  *     three flex children (LeftPanel, CenterPanel, RightPanel) with width
  *     transitions driven by panel state, plus BackendUnreachableModal.
  *   - fetchWorkspaces() on mount: populates the WorkspaceSwitcher dropdown.
- *   - workspace-change effect: refetches documents and clears chat on workspaceId
- *     change so the user sees a fresh context for each workspace.
+ *   - workspace-change effect: refetches documents, clears chat, and calls
+ *     fetchKPIs() on workspaceId change so all panels reflect the new workspace.
  */
 import { useEffect } from 'react'
 import { Box } from '@mui/material'
@@ -28,6 +28,7 @@ import { useSessionStore } from './stores/sessionStore'
 import { useDocumentStore } from './stores/documentStore'
 import { useChatStore } from './stores/chatStore'
 import { useWorkspaceStore } from './stores/workspaceStore'
+import { useDashboardStore } from './stores/dashboardStore'
 import LeftPanel from './components/panels/LeftPanel'
 import CenterPanel from './components/panels/CenterPanel'
 import RightPanel from './components/panels/RightPanel'
@@ -43,6 +44,7 @@ export default function App() {
   const fetchDocuments = useDocumentStore((s) => s.fetchDocuments)
   const clearChat = useChatStore((s) => s.clearChat)
   const fetchWorkspaces = useWorkspaceStore((s) => s.fetchWorkspaces)
+  const fetchKPIs = useDashboardStore((s) => s.fetchKPIs)
 
   // Fetch workspaces once on mount to populate the WorkspaceSwitcher dropdown
   useEffect(() => {
@@ -50,12 +52,13 @@ export default function App() {
   }, [fetchWorkspaces])
 
   // Single authoritative fetch — prevents LeftPanel + RightPanel both firing on mount.
-  // Also re-fetches and clears chat when the active workspace changes so the user
-  // sees a fresh context for the new workspace.
+  // Also re-fetches documents, clears chat, and refreshes KPIs when the active
+  // workspace changes so all panels reflect the new workspace context.
   useEffect(() => {
     fetchDocuments()
     clearChat()
-  }, [workspaceId, fetchDocuments, clearChat])
+    fetchKPIs()
+  }, [workspaceId, fetchDocuments, clearChat, fetchKPIs])
 
   return (
     <Box
