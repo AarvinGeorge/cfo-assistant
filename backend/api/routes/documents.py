@@ -12,12 +12,16 @@ Role in project:
         data/uploads/{workspace_id}/{doc_id}.{ext} on disk
       - SQLite Document rows are the UI source of truth
     File hash dedup prevents re-embedding the same file within a workspace.
+    KPI cache is invalidated after any upload or delete so the dashboard
+    reflects the latest document set on the next GET /kpis/ call.
 
 Main parts:
     - POST /documents/upload: parse+chunk+embed; transactional write.
       Returns existing doc_id if file_hash already present in workspace.
+      Invalidates KPI cache on success.
     - GET /documents/: SQL query against Document table scoped to workspace.
     - DELETE /documents/{doc_id}: transactional remove from all three stores.
+      Invalidates KPI cache on success.
 """
 import hashlib
 import uuid
@@ -36,6 +40,7 @@ from backend.db.engine import get_session_factory
 from backend.db.models import Document
 from backend.mcp_server.tools.document_tools import list_documents_sql
 from backend.skills.document_ingestion import parse_pdf, parse_csv, hierarchical_chunk
+from backend.api.routes.kpis import invalidate_workspace_cache
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -166,6 +171,10 @@ async def upload_document(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
+    # Invalidate KPI cache so the dashboard recomputes with the new document
+    with SessionLocal() as session:
+        invalidate_workspace_cache(session, ctx.workspace_id)
+
     return {
         "doc_id": doc_id,
         "doc_name": filename,
@@ -216,5 +225,9 @@ async def remove_document(
                 session.commit()
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Delete failed: {str(e)}")
+
+    # Invalidate KPI cache — document set has changed
+    with SessionLocal() as inv_session:
+        invalidate_workspace_cache(inv_session, ctx.workspace_id)
 
     return {"status": "deleted", "doc_id": doc_id}
