@@ -17,7 +17,7 @@ Main parts:
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -148,7 +148,7 @@ def update_workspace(
                 raise HTTPException(status_code=400, detail="status must be 'active' or 'archived'")
             w.status = payload.status
 
-        w.updated_at = datetime.utcnow()
+        w.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
         session.commit()
         session.refresh(w)
         return WorkspaceResponse(
