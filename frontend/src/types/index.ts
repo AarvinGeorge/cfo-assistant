@@ -14,6 +14,8 @@
  *   - ChatMessage: a single message in the conversation (role, content, citations).
  *   - Citation: a parsed [Source: ...] reference with doc name and section.
  *   - KPIValue: a single KPI card value (label, value, format, change, favorable).
+ *   - KpiEntry: a single cached KPI entry returned by GET /kpis/.
+ *   - KpisResponse: full response shape from GET /kpis/.
  *   - StreamEvent: discriminated union of SSE event types emitted by /chat/stream.
  *   - Intent: enum of the 7 intent categories the orchestrator classifies into.
  */
@@ -57,4 +59,17 @@ export interface HealthStatus {
   pinecone: boolean
   anthropic_key: boolean
   gemini_key: boolean
+}
+
+export interface KpiEntry {
+  response: string
+  citations: string[]
+  computed_at: string  // ISO timestamp
+}
+
+export interface KpisResponse {
+  kpis: Record<string, KpiEntry> | null
+  status: 'ready' | 'empty'
+  computed_at: string | null
+  cache_hit: boolean
 }
