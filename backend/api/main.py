@@ -16,7 +16,7 @@ Main parts:
     - lifespan(): async context that validates presence of API keys on
       startup. No external service ping — SQLite is in-process, Pinecone
       is health-checked per-request via /health.
-    - Router registrations: /health, /chat, /documents, /models, /scenarios.
+    - Router registrations: /health, /chat, /documents, /models, /scenarios, /workspaces.
 """
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
@@ -26,6 +26,7 @@ from backend.api.routes.documents import router as documents_router
 from backend.api.routes.models import router as models_router
 from backend.api.routes.scenarios import router as scenarios_router
 from backend.api.routes.chat import router as chat_router
+from backend.api.routes.workspaces import router as workspaces_router
 
 
 @asynccontextmanager
@@ -59,3 +60,4 @@ app.include_router(documents_router)
 app.include_router(models_router)
 app.include_router(scenarios_router)
 app.include_router(chat_router)
+app.include_router(workspaces_router)
