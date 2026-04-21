@@ -2,16 +2,18 @@
  * LeftPanel.tsx
  *
  * Left panel of the 3-panel layout — the Sources panel where users manage
- * financial documents.
+ * financial documents and switch between workspaces.
  *
  * Role in project:
  *   Document management UI. Reads from documentStore (document list, upload
  *   state) and renders the list of ingested files with type chips, status
  *   indicators, and hover-reveal delete buttons. Collapses to a 48px icon
- *   rail showing only the upload button.
+ *   rail showing only the upload button. Hosts WorkspaceSwitcher at the top
+ *   of the expanded panel for multi-workspace navigation.
  *
  * Main parts:
  *   - LeftPanel: main component with expanded/collapsed render paths.
+ *   - WorkspaceSwitcher: workspace dropdown mounted at top of expanded panel.
  *   - renderUploadDialog(): MUI Dialog for file picker, doc_type dropdown,
  *     and fiscal_year field.
  *   - renderSnackbar(): success/error feedback after upload, rendered in
@@ -36,6 +38,7 @@ import ChevronRightIcon from '@mui/icons-material/ChevronRight'
 import FolderOpenIcon from '@mui/icons-material/FolderOpen'
 import { useDocumentStore } from '../../stores/documentStore'
 import { useSessionStore } from '../../stores/sessionStore'
+import { WorkspaceSwitcher } from '../workspace/WorkspaceSwitcher'
 
 const DOC_TYPES = [
   '10-K', '10-Q', 'Income Statement', 'Balance Sheet',
@@ -160,6 +163,11 @@ export default function LeftPanel() {
             <ChevronLeftIcon fontSize="small" />
           </IconButton>
         </Tooltip>
+      </Box>
+
+      {/* Workspace switcher */}
+      <Box sx={{ px: 1.5, pt: 1.5, pb: 1, flexShrink: 0 }}>
+        <WorkspaceSwitcher />
       </Box>
 
       {/* Search */}
