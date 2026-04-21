@@ -5,10 +5,10 @@
  * cards and quick-action shortcuts.
  *
  * Role in project:
- *   CFO dashboard surface. Reads from dashboardStore (KPI values, loading
- *   state) and chatStore (sendMessage for Quick Actions). Fires fetchKPIs()
- *   on mount to populate cards from indexed documents. Collapses to a 48px
- *   icon rail.
+ *   CFO dashboard surface. Reads from dashboardStore (KPI values from
+ *   GET /kpis/, status, computedAt) and chatStore (sendMessage for Quick
+ *   Actions). fetchKPIs() is called from App.tsx on mount and workspace
+ *   change — not locally. Collapses to a 48px icon rail.
  *
  * Main parts:
  *   - RightPanel: expanded/collapsed render paths.
@@ -16,9 +16,9 @@
  *     Balance, Runway) in a 2-column MUI Grid with skeleton loaders.
  *   - Quick Actions: 4 MUI Buttons (DCF Model, Scenario Analysis, Forecast
  *     Revenue, Export Report) that call sendMessage() with preset prompts.
+ *   - timeAgo: inline helper to format ISO timestamps as relative strings.
  *   - TODO: migrate Grid to Grid2 for MUI v7 compatibility.
  */
-import { useEffect } from 'react'
 import {
   Box, Typography, IconButton, Tooltip, Grid, Skeleton,
   Card, CardContent, Button, Divider,
@@ -26,25 +26,23 @@ import {
 import RefreshIcon from '@mui/icons-material/Refresh'
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
 import ChevronRightIcon from '@mui/icons-material/ChevronRight'
-import TrendingUpIcon from '@mui/icons-material/TrendingUp'
-import TrendingDownIcon from '@mui/icons-material/TrendingDown'
 import ShowChartIcon from '@mui/icons-material/ShowChart'
 import ScatterPlotIcon from '@mui/icons-material/ScatterPlot'
 import TimelineIcon from '@mui/icons-material/Timeline'
 import DownloadIcon from '@mui/icons-material/Download'
 import DashboardIcon from '@mui/icons-material/Dashboard'
 import { useDashboardStore } from '../../stores/dashboardStore'
-import { useDocumentStore } from '../../stores/documentStore'
 import { useSessionStore } from '../../stores/sessionStore'
 import { useChatStore } from '../../stores/chatStore'
-import { KPIValue } from '../../types'
+import { KpiEntry } from '../../types'
 
+// Backend kpi_key values mapped to display labels, in display order
 const KPI_CONFIG: { key: string; label: string }[] = [
   { key: 'revenue', label: 'Revenue' },
-  { key: 'grossMargin', label: 'Gross Margin' },
+  { key: 'gross_margin', label: 'Gross Margin' },
   { key: 'ebitda', label: 'EBITDA' },
-  { key: 'netIncome', label: 'Net Income' },
-  { key: 'cashBalance', label: 'Cash Balance' },
+  { key: 'net_income', label: 'Net Income' },
+  { key: 'cash_balance', label: 'Cash Balance' },
   { key: 'runway', label: 'Runway' },
 ]
 
@@ -75,7 +73,21 @@ const QUICK_ACTIONS = [
   },
 ]
 
-function KPICard({ label, data, loading }: { label: string; data: KPIValue | null; loading: boolean }) {
+function timeAgo(iso: string | null): string {
+  if (!iso) return ''
+  const then = new Date(iso).getTime()
+  const now = Date.now()
+  const diffMin = Math.floor((now - then) / 60000)
+  if (diffMin < 1) return 'just now'
+  if (diffMin === 1) return '1 min ago'
+  if (diffMin < 60) return `${diffMin} min ago`
+  const hours = Math.floor(diffMin / 60)
+  if (hours === 1) return '1 hour ago'
+  if (hours < 24) return `${hours} hours ago`
+  return `${Math.floor(hours / 24)} day(s) ago`
+}
+
+function KPICard({ label, data, loading }: { label: string; data: KpiEntry | null | undefined; loading: boolean }) {
   if (loading) {
     return (
       <Card variant="outlined" sx={{ bgcolor: 'action.hover', border: 'none' }}>
@@ -88,48 +100,40 @@ function KPICard({ label, data, loading }: { label: string; data: KPIValue | nul
     )
   }
 
+  // Truncate the Claude response to first 120 chars for the card summary
+  const excerpt = data?.response
+    ? data.response.length > 120
+      ? data.response.slice(0, 120) + '…'
+      : data.response
+    : null
+
   return (
     <Card variant="outlined" sx={{ bgcolor: 'action.hover', border: 'none' }}>
       <CardContent sx={{ p: '10px !important' }}>
         <Typography variant="caption" color="text.secondary" sx={{ fontSize: 10, fontWeight: 500, letterSpacing: '0.04em' }}>
           {label.toUpperCase()}
         </Typography>
-        <Typography variant="body1" fontWeight={700} sx={{ lineHeight: 1.3, mt: 0.25 }}>
-          {data?.value ?? '—'}
+        <Typography variant="body2" fontWeight={600} sx={{ lineHeight: 1.4, mt: 0.25, fontSize: 11 }}>
+          {excerpt ?? '—'}
         </Typography>
-        {data?.change && (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25, mt: 0.25 }}>
-            {data.favorable
-              ? <TrendingUpIcon sx={{ fontSize: 11, color: 'secondary.main' }} />
-              : <TrendingDownIcon sx={{ fontSize: 11, color: 'error.main' }} />
-            }
-            <Typography
-              variant="caption"
-              sx={{ fontSize: 10, color: data.favorable ? 'secondary.main' : 'error.main', fontWeight: 500 }}
-            >
-              {data.change}
-            </Typography>
-          </Box>
-        )}
       </CardContent>
     </Card>
   )
 }
 
 export default function RightPanel() {
-  const { kpis, loading, lastUpdated, fetchKPIs } = useDashboardStore()
-  const { documents } = useDocumentStore()
+  const { kpis, status, computedAt, fetchKPIs } = useDashboardStore()
   const { rightPanelOpen, toggleRightPanel } = useSessionStore()
   const { sendMessage } = useChatStore()
 
-  useEffect(() => {
-    if (documents.length > 0 && !lastUpdated) {
-      fetchKPIs()
-    }
-  }, [documents, lastUpdated, fetchKPIs])
+  const isLoading = status === 'loading'
 
   const handleQuickAction = (message: string) => {
     sendMessage(message)
+  }
+
+  const handleRefresh = () => {
+    fetchKPIs(true)
   }
 
   // ── Collapsed rail ─────────────────────────────────────────
@@ -183,7 +187,7 @@ export default function RightPanel() {
         <Typography variant="body1" fontWeight={600} sx={{ flex: 1 }}>Studio</Typography>
         <Tooltip title="Refresh KPIs">
           <span>
-            <IconButton size="small" onClick={fetchKPIs} disabled={loading || documents.length === 0}>
+            <IconButton size="small" onClick={handleRefresh} disabled={isLoading} aria-label="Refresh KPIs">
               <RefreshIcon fontSize="small" />
             </IconButton>
           </span>
@@ -201,13 +205,26 @@ export default function RightPanel() {
           FINANCIAL OVERVIEW
         </Typography>
 
-        {documents.length === 0 && !loading ? (
+        {/* Empty state: workspace has no documents */}
+        {status === 'empty' && (
           <Box sx={{ textAlign: 'center', py: 3, px: 1 }}>
-            <Typography variant="body2" color="text.secondary" sx={{ fontSize: 12 }}>
-              Upload documents to populate KPIs
+            <Typography variant="body2" sx={{ fontSize: 12, color: 'primary.main' }}>
+              Upload a document to see KPIs.
             </Typography>
           </Box>
-        ) : (
+        )}
+
+        {/* Error state */}
+        {status === 'error' && (
+          <Box sx={{ textAlign: 'center', py: 3, px: 1 }}>
+            <Typography variant="body2" color="error" sx={{ fontSize: 12 }}>
+              Failed to load KPIs. Try refreshing.
+            </Typography>
+          </Box>
+        )}
+
+        {/* Loading or ready: show the 6 KPI cards */}
+        {(isLoading || status === 'ready') && (
           <Grid container spacing={1} sx={{ mb: 2 }}>
             {KPI_CONFIG.map(({ key, label }) => (
               // MUI v6 Grid v1 — `item xs` is deprecated but `size` prop requires Grid2
@@ -215,17 +232,18 @@ export default function RightPanel() {
               <Grid item xs={6} key={key}>
                 <KPICard
                   label={label}
-                  data={kpis[key as keyof typeof kpis]}
-                  loading={loading}
+                  data={kpis?.[key] ?? null}
+                  loading={isLoading}
                 />
               </Grid>
             ))}
           </Grid>
         )}
 
-        {lastUpdated && (
+        {/* "Updated N min ago" / cache indicator */}
+        {computedAt && (
           <Typography variant="caption" color="text.disabled" sx={{ display: 'block', mb: 2, fontSize: 10, pl: 0.5 }}>
-            Updated {lastUpdated}
+            Updated {timeAgo(computedAt)}
           </Typography>
         )}
 
