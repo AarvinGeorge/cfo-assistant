@@ -10,12 +10,22 @@
  *
  * Main parts:
  *   - Document: shape of a document record returned by GET /documents/.
+ *   - Workspace: shape of a workspace record returned by GET /workspaces/.
  *   - ChatMessage: a single message in the conversation (role, content, citations).
  *   - Citation: a parsed [Source: ...] reference with doc name and section.
  *   - KPIValue: a single KPI card value (label, value, format, change, favorable).
  *   - StreamEvent: discriminated union of SSE event types emitted by /chat/stream.
  *   - Intent: enum of the 7 intent categories the orchestrator classifies into.
  */
+export interface Workspace {
+  id: string
+  name: string
+  description: string | null
+  status: 'active' | 'archived'
+  created_at: string
+  updated_at: string
+}
+
 export interface Document {
   doc_id: string
   doc_name: string
